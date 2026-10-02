@@ -21,6 +21,7 @@ import {
   Heart,
   Home,
   Image as ImageIcon,
+  MapPin,
   Menu,
   MessageSquare,
   Moon,
@@ -32,6 +33,7 @@ import {
   Search,
   Send,
   Settings,
+  Smartphone,
   Sparkles,
   Sun,
   Trash2,
@@ -47,6 +49,8 @@ const STORAGE_KEY_PROFILE = "aibe_profile";
 const STORAGE_KEY_SESSIONS = "aibe_sessions";
 const STORAGE_KEY_PINNED = "aibe_pinned";
 const STORAGE_KEY_GENDER = "aibe_gender";
+const STORAGE_KEY_LOCATION_ENABLED = "aibe_location_enabled";
+const STORAGE_KEY_LOCATION_DATA = "aibe_location_data";
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const GROQ_MODEL = "openai/gpt-oss-120b";
@@ -63,8 +67,7 @@ const FOLLOWUP_SETTINGS = {
   firstDelayMax: 6000,
   nextDelayMin: 6000,
   nextDelayMax: 10000,
-  activeModes: ["NORMAL", "CURHAT"],
-  activeSessionsMax: 3
+  activeModes: ["NORMAL", "CURHAT"]
 };
 
 const FLIRT_KEYWORDS = [
@@ -78,51 +81,220 @@ const FLIRT_KEYWORDS = [
   "beautiful", "pretty", "handsome"
 ];
 
-const USER_IDLE_KEYWORDS = [
-  "yaudah", "ya udah", "oke", "ok", "oh", "hmm", "hm", "y", "ya",
-  "iya", "sip", "mantap", "oke deh", "yowes", "yowis"
-];
+/* ============ DEVICE DETECTION (dengan merek) ============ */
+const detectDevice = () => {
+  if (typeof window === "undefined") {
+    return { type: "unknown", os: "unknown", browser: "unknown", brand: null, isMobile: false, isTablet: false, isDesktop: false };
+  }
 
-/* ============ TYPING PHRASES ============ */
-const TYPING_PHRASES = [
-  "Sabar lagi ngetik...",
-  "Bentar, lagi mikir...",
-  "Otak gue lagi loading...",
-  "Lagi nyusun kata-kata nih...",
-  "Hmm, bentar ya...",
-  "Lagi ngetik, jangan kemana-mana...",
-  "Sedang merangkai kalimat...",
-  "Tunggu bentar, lagi fokus...",
-  "Lagi mikir keras nih...",
-  "Bentar, hampir kelar...",
-  "Lagi nyari kata yang pas...",
-  "Sabar yak, otak gue panas...",
-  "Processing... jangan di-refresh...",
-  "Lagi nyusun jawaban nih...",
-  "Bentar, lagi nge-load inspirasi...",
-  "Lagi ngetik, santai aja...",
-  "Hmm... ide lagi ngalir...",
-  "Bentar, lagi mikir dalem...",
-  "Lagi nyiapin jawaban terbaik...",
-  "Sabar, gue gak lagi nge-game kok..."
-];
+  const ua = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  const maxTouch = navigator.maxTouchPoints || 0;
 
-const getRandomTypingPhrase = () => TYPING_PHRASES[Math.floor(Math.random() * TYPING_PHRASES.length)];
+  let type = "desktop", isMobile = false, isTablet = false, isDesktop = false;
 
-const detectFlirt = (text) => {
-  if (!text) return false;
-  const lower = text.toLowerCase();
-  return FLIRT_KEYWORDS.some((k) => lower.includes(k));
+  const isIPad = /ipad/i.test(ua) || (platform === "MacIntel" && maxTouch > 1);
+  const isTabletUA = /tablet|playbook|silk/i.test(ua) || isIPad;
+  const isMobileUA = /mobile|iphone|ipod|android|blackberry|opera mini|iemobile|wpdesktop/i.test(ua);
+
+  if (isTabletUA) { type = "tablet"; isTablet = true; }
+  else if (isMobileUA) { type = "mobile"; isMobile = true; }
+  else { type = "desktop"; isDesktop = true; }
+
+  let os = "unknown";
+  if (/windows/i.test(ua)) os = "Windows";
+  else if (/macintosh|mac os x/i.test(ua) && !isIPad) os = "macOS";
+  else if (/android/i.test(ua)) os = "Android";
+  else if (/iphone|ipod/i.test(ua)) os = "iOS";
+  else if (isIPad) os = "iPadOS";
+  else if (/linux/i.test(ua)) os = "Linux";
+
+  let browser = "unknown";
+  if (/edg\//i.test(ua)) browser = "Edge";
+  else if (/chrome|crios/i.test(ua) && !/edg\//i.test(ua)) browser = "Chrome";
+  else if (/safari/i.test(ua) && !/chrome|crios/i.test(ua)) browser = "Safari";
+  else if (/firefox|fxios/i.test(ua)) browser = "Firefox";
+  else if (/opr\//i.test(ua) || /opera/i.test(ua)) browser = "Opera";
+
+  // Merek detection
+  let brand = null;
+  let brandDetail = null;
+
+  if (/iphone/i.test(ua)) {
+    brand = "Apple";
+    brandDetail = "iPhone";
+  } else if (isIPad) {
+    brand = "Apple";
+    brandDetail = "iPad";
+  } else if (/macintosh|mac os x/i.test(ua) && maxTouch === 0) {
+    brand = "Apple";
+    brandDetail = "MacBook / Mac";
+  } else if (/samsung|sm-/i.test(ua)) {
+    brand = "Samsung";
+    brandDetail = "Samsung Galaxy";
+  } else if (/xiaomi|redmi|poco|mi\s|miui/i.test(ua)) {
+    brand = "Xiaomi";
+    brandDetail = /poco/i.test(ua) ? "POCO" : /redmi/i.test(ua) ? "Redmi" : "Xiaomi";
+  } else if (/oppo/i.test(ua)) { brand = "Oppo"; brandDetail = "Oppo"; }
+  else if (/vivo/i.test(ua)) { brand = "Vivo"; brandDetail = "Vivo"; }
+  else if (/realme/i.test(ua)) { brand = "Realme"; brandDetail = "Realme"; }
+  else if (/oneplus/i.test(ua)) { brand = "OnePlus"; brandDetail = "OnePlus"; }
+  else if (/huawei/i.test(ua)) { brand = "Huawei"; brandDetail = "Huawei"; }
+  else if (/asus/i.test(ua)) { brand = "Asus"; brandDetail = "Asus"; }
+  else if (/acer/i.test(ua)) { brand = "Acer"; brandDetail = "Acer"; }
+  else if (/lenovo/i.test(ua)) { brand = "Lenovo"; brandDetail = "Lenovo"; }
+  else if (/hp\s|hewlett/i.test(ua)) { brand = "HP"; brandDetail = "HP"; }
+  else if (/dell/i.test(ua)) { brand = "Dell"; brandDetail = "Dell"; }
+  else if (os === "Android") { brand = "Android"; brandDetail = "HP Android (merek gak kebaca)"; }
+  else if (os === "Windows") { brand = "Windows PC"; brandDetail = "Laptop/PC Windows"; }
+  else if (os === "Linux") { brand = "Linux PC"; brandDetail = "PC Linux"; }
+
+  const screenW = window.screen?.width || window.innerWidth || 0;
+  const screenH = window.screen?.height || window.innerHeight || 0;
+  const pixelRatio = window.devicePixelRatio || 1;
+
+  return {
+    type, os, browser, brand, brandDetail,
+    isMobile, isTablet, isDesktop,
+    screenW, screenH, pixelRatio,
+    isTouch: maxTouch > 0,
+    userAgent: ua
+  };
 };
 
-const getUserMessageCount = (session) => {
-  if (!session?.messages) return 0;
-  return session.messages.filter((m) => m.sender === "user").length;
+const getDeviceLabel = (device) => {
+  if (!device) return "Unknown";
+  if (device.brandDetail) return device.brandDetail;
+  const { type, os } = device;
+  if (type === "mobile") {
+    if (os === "iOS") return "iPhone";
+    if (os === "Android") return "HP Android";
+    return "HP";
+  }
+  if (type === "tablet") {
+    if (os === "iPadOS") return "iPad";
+    if (os === "Android") return "Tablet Android";
+    return "Tablet";
+  }
+  if (type === "desktop") {
+    if (os === "Windows") return "Laptop Windows";
+    if (os === "macOS") return "MacBook";
+    if (os === "Linux") return "PC Linux";
+    return "Laptop";
+  }
+  return "Device";
+};
+
+/* ============ LOCATION HELPERS ============ */
+const fetchIPLocation = async () => {
+  try {
+    const res = await fetch("https://ipapi.co/json/");
+    if (!res.ok) throw new Error("IP API failed");
+    const data = await res.json();
+    return {
+      source: "ip",
+      city: data.city || null,
+      region: data.region || null,
+      country: data.country_name || null,
+      lat: data.latitude || null,
+      lon: data.longitude || null
+    };
+  } catch (err) {
+    console.warn("IP location failed:", err);
+    return null;
+  }
+};
+
+const fetchGPSLocation = () => {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+    const timeout = setTimeout(() => resolve(null), 8000);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        clearTimeout(timeout);
+        resolve({ source: "gps", lat: pos.coords.latitude, lon: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy) });
+      },
+      (err) => {
+        clearTimeout(timeout);
+        console.warn("GPS failed:", err.message);
+        resolve(null);
+      },
+      { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 }
+    );
+  });
+};
+
+const reverseGeocode = async (lat, lon) => {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`;
+    const res = await fetch(url, { headers: { "User-Agent": "AIBERIQ-App/1.0" } });
+    if (!res.ok) throw new Error("Geocode failed");
+    const data = await res.json();
+    const addr = data.address || {};
+    return {
+      city: addr.city || addr.town || addr.village || addr.municipality || addr.county || null,
+      region: addr.state || addr.region || null,
+      country: addr.country || null,
+      suburb: addr.suburb || addr.neighbourhood || addr.village || null
+    };
+  } catch (err) {
+    console.warn("Reverse geocode failed:", err);
+    return null;
+  }
+};
+
+/* ============ ACTIVITY ============ */
+const ACTIVITY = {
+  IDLE: "idle",
+  WALKING: "walking",
+  MOVING_FAST: "moving_fast",
+  SLEEPING: "sleeping"
+};
+
+const determineActivity = (prevCoords, currentCoords, timeDiffMs, isTabActive) => {
+  if (!isTabActive) return ACTIVITY.IDLE;
+  if (!prevCoords || !currentCoords) return ACTIVITY.IDLE;
+
+  const R = 6371000;
+  const lat1 = prevCoords.lat * Math.PI / 180;
+  const lat2 = currentCoords.lat * Math.PI / 180;
+  const dLat = (currentCoords.lat - prevCoords.lat) * Math.PI / 180;
+  const dLon = (currentCoords.lon - prevCoords.lon) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  const speedKmh = (distance / (timeDiffMs / 1000)) * 3.6;
+
+  if (speedKmh < 0.5) return ACTIVITY.IDLE;
+  if (speedKmh < 7) return ACTIVITY.WALKING;
+  return ACTIVITY.MOVING_FAST;
+};
+
+const getActivityLabel = (activity) => {
+  switch (activity) {
+    case ACTIVITY.WALKING: return "Jalan";
+    case ACTIVITY.MOVING_FAST: return "Naik kendaraan";
+    case ACTIVITY.SLEEPING: return "Idle lama";
+    default: return "Diem";
+  }
+};
+
+const getActivityEmoji = (activity) => {
+  switch (activity) {
+    case ACTIVITY.WALKING: return "🚶";
+    case ACTIVITY.MOVING_FAST: return "🚗";
+    case ACTIVITY.SLEEPING: return "😴";
+    default: return "🛑";
+  }
 };
 
 /* ============ MODES ============ */
 const AVAILABLE_MODES = [
   { id: "NORMAL", label: "Normal", icon: MessageSquare, description: "Ngobrol santai, tanya apa aja" },
+  { id: "TEBAK_DEVICE", label: "Tebak Device", icon: Smartphone, description: "AI tebak device & merek kamu" },
   { id: "TEBAK_BATRE", label: "Tebak Batre", icon: Battery, description: "AI cek batre lu real-time" },
   { id: "SYSTEM_INFO", label: "Info Sistem", icon: Cpu, description: "Spek device lu" },
   { id: "NETWORK", label: "Info Jaringan", icon: Wifi, description: "Status koneksi" },
@@ -151,11 +323,23 @@ const SCRIPT_CATEGORIES = [
 ];
 
 const DEFAULT_PROFILE = {
-  name: "",
-  nickname: "",
-  createdAt: null,
-  lastSeen: null,
+  name: "", nickname: "", createdAt: null, lastSeen: null,
   preferences: { city: "", school: "", hobbies: [] }
+};
+
+/* ============ TYPING ============ */
+const TYPING_PHRASES = [
+  "Sabar lagi ngetik...", "Bentar, lagi mikir...", "Otak gue lagi loading...",
+  "Lagi nyusun kata-kata nih...", "Hmm, bentar ya...", "Lagi ngetik, jangan kemana-mana...",
+  "Sedang merangkai kalimat...", "Tunggu bentar, lagi fokus...", "Lagi mikir keras nih...", "Bentar, hampir kelar..."
+];
+
+const getRandomTypingPhrase = () => TYPING_PHRASES[Math.floor(Math.random() * TYPING_PHRASES.length)];
+
+const detectFlirt = (text) => {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return FLIRT_KEYWORDS.some((k) => lower.includes(k));
 };
 
 /* ============ TELEMETRY ============ */
@@ -173,8 +357,7 @@ const getStaticDeviceTelemetry = () => {
     platform: navigator.platform || "Browser",
     language: navigator.language || "id-ID",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Jakarta",
-    touchPoints: navigator.maxTouchPoints || 0,
-    userAgentShort: navigator.userAgent?.includes("Chrome") ? "Chromium Engine" : "Web Engine"
+    touchPoints: navigator.maxTouchPoints || 0
   };
   return staticTelemetryCache;
 };
@@ -197,21 +380,20 @@ const TelemetryProvider = {
         return { available: false, source: "Battery API", data: null, reason: error.message, timestamp: Date.now() };
       }
     }
-    return { available: false, source: "Browser Sandbox", data: null, reason: "Battery Status API tidak didukung browser ini.", timestamp: Date.now() };
+    return { available: false, source: "Browser Sandbox", data: null, reason: "Battery Status API tidak didukung.", timestamp: Date.now() };
   },
   async getSystemInfo() {
-    return { available: true, source: "Browser Navigator & Screen", timestamp: Date.now(), data: getStaticDeviceTelemetry() };
+    return { available: true, source: "Browser", timestamp: Date.now(), data: getStaticDeviceTelemetry() };
   },
   async getNetworkInfo() {
     const connection = typeof navigator !== "undefined" ? navigator.connection || navigator.mozConnection || navigator.webkitConnection : null;
     return {
-      available: true, source: "Network Information API", timestamp: Date.now(),
+      available: true, source: "Network API", timestamp: Date.now(),
       data: {
         online: typeof navigator !== "undefined" ? navigator.onLine : true,
         effectiveType: connection?.effectiveType ? connection.effectiveType.toUpperCase() : "N/A",
         downlinkMbps: connection?.downlink ? `${connection.downlink} Mbps` : "N/A",
-        rttMs: connection?.rtt ? `${connection.rtt} ms` : "N/A",
-        wifiSSID: "UNAVAILABLE"
+        rttMs: connection?.rtt ? `${connection.rtt} ms` : "N/A"
       }
     };
   }
@@ -223,15 +405,13 @@ const buildTelemetryAutoReply = async (mode) => {
     if (!bat.available) return `Waduh, browser lu gak support Battery API nih.`;
     const { level, charging, chargingTime, dischargingTime } = bat.data;
     const emoji = charging ? "⚡" : "🔋";
-    const extra = charging
-      ? chargingTime !== "N/A" ? ` Perkiraan penuh dalam ${chargingTime}.` : ""
-      : dischargingTime !== "N/A" ? ` Perkiraan habis dalam ${dischargingTime}.` : "";
-    return `${emoji} Gue cek langsung dari sistem lu ya:\n\n**Baterai lu: ${level}%**\nStatus: **${charging ? "LAGI DI-CAS" : "LAGI GAK DI-CAS"}**\n\n${extra}\n\nSumber: Battery Status API.`;
+    const extra = charging ? (chargingTime !== "N/A" ? ` Perkiraan penuh ${chargingTime}.` : "") : (dischargingTime !== "N/A" ? ` Perkiraan habis ${dischargingTime}.` : "");
+    return `${emoji} Gue cek langsung dari sistem lu ya:\n\n**Baterai lu: ${level}%**\nStatus: **${charging ? "LAGI DI-CAS" : "LAGI GAK DI-CAS"}**\n\n${extra}`;
   }
   if (mode === "SYSTEM_INFO") {
     const sys = await TelemetryProvider.getSystemInfo();
     const d = sys.data;
-    return `🖥️ **Info Sistem:**\n\n- CPU Cores: **${d.logicalCores}**\n- RAM: **${d.deviceMemoryGB}**\n- Layar: **${d.screenWidth} × ${d.screenHeight}**\n- Platform: **${d.platform}**\n- Bahasa: **${d.language}**\n- Timezone: **${d.timezone}**\n- Engine: **${d.userAgentShort}**`;
+    return `🖥️ **Info Sistem:**\n\n- CPU Cores: **${d.logicalCores}**\n- RAM: **${d.deviceMemoryGB}**\n- Layar: **${d.screenWidth} × ${d.screenHeight}**\n- Platform: **${d.platform}**\n- Bahasa: **${d.language}**\n- Timezone: **${d.timezone}**`;
   }
   if (mode === "NETWORK") {
     const net = await TelemetryProvider.getNetworkInfo();
@@ -253,12 +433,7 @@ const callGroqAI = async ({ messages, signal, onChunk, onComplete, onError }) =>
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
       let detailMsg = `HTTP ${res.status} ${res.statusText}`;
-      try {
-        const errJson = JSON.parse(errText);
-        detailMsg = errJson?.error?.message || detailMsg;
-      } catch {
-        if (errText) detailMsg += ` — ${errText.slice(0, 300)}`;
-      }
+      try { const errJson = JSON.parse(errText); detailMsg = errJson?.error?.message || detailMsg; } catch { if (errText) detailMsg += ` — ${errText.slice(0, 300)}`; }
       throw new Error(detailMsg);
     }
     if (!res.body) throw new Error("Response body is null");
@@ -293,30 +468,47 @@ const callGroqAI = async ({ messages, signal, onChunk, onComplete, onError }) =>
 };
 
 /* ============ SYSTEM PROMPT ============ */
-const BUILD_SYSTEM_PROMPT = (profile, mode, curhatCategory = null, scriptCategory = null, gender = "male", isFollowUp = false) => {
+const BUILD_SYSTEM_PROMPT = (profile, mode, curhatCategory, scriptCategory, gender, isFollowUp, context) => {
   const name = profile?.nickname || profile?.name || "User";
+  const device = context?.device;
+  const location = context?.location;
+  const activity = context?.activity;
+
   let modeDirective = "";
 
+  if (mode === "TEBAK_DEVICE") {
+    const devLabel = device ? getDeviceLabel(device) : "Unknown";
+    const brandInfo = device?.brand ? `Merek: ${device.brand}` : "Merek: gak kebaca dari UA";
+    const detailInfo = device?.brandDetail ? `Detail: ${device.brandDetail}` : "";
+    modeDirective = `MODE TEBAK DEVICE. Fokus: tebak & jelasin device user dengan AKURAT dari data di bawah.
+
+📱 DATA DEVICE USER:
+- Tipe: ${device?.type || "unknown"}
+- OS: ${device?.os || "unknown"}
+- Browser: ${device?.browser || "unknown"}
+- ${brandInfo}
+- ${detailInfo}
+- Layar: ${device?.screenW || "?"} × ${device?.screenH || "?"}
+- Pixel Ratio: ${device?.pixelRatio || "?"}
+- Touch: ${device?.isTouch ? "Ya" : "Tidak"}
+- User Agent: ${device?.userAgent?.slice(0, 120) || "?"}
+
+CARA JAWAB:
+1. Kalau user tanya "device gw apa?" → kasih tau jelas: merek, OS, browser.
+2. Jelaskan BAGAIMANA kamu tau (dari User-Agent browser, layar, touch).
+3. Kalau merek GAK kebaca (misal cuma "Android") → jujur bilang "merek gak kebaca, kemungkinan HP Android umum".
+4. Jangan ngarang merek yang gak ada di data.
+5. Boleh kasih fakta random: "layar kamu ${device?.screenW}×${device?.screenH} ya, ${device?.screenW > 400 ? "gede juga" : "standar HP"}"`;
+  }
   if (mode === "CURHAT") {
     const cat = CURHAT_CATEGORIES.find((c) => c.id === curhatCategory);
     const catLabel = cat ? cat.label : "Umum";
-    modeDirective = `MODE CURHAT — Kategori: ${catLabel}.
-
-PENTING: Fokus HANYA pada topik kategori ini.
-
-Kamu adalah pendengar HANGAT, EMPATIK, TIDAK MENGHakimi:
-1. Validasi perasaan user dulu.
-2. Jangan langsung kasih solusi panjang.
-3. Respons pendek-pendek.
-4. Jangan ceramah.
-5. JANGAN mengarang fakta.`;
+    modeDirective = `MODE CURHAT — Kategori: ${catLabel}. Fokus HANYA topik ini. Kamu pendengar hangat, empatik, tidak menghakimi. Respons pendek-pendek. Jangan ceramah.`;
   }
   if (mode === "SCRIPT_GEN") {
     const cat = SCRIPT_CATEGORIES.find((c) => c.id === scriptCategory);
     const catLabel = cat ? cat.label : "Custom";
-    modeDirective = `MODE SCRIPT GENERATOR — Kategori: ${catLabel}.
-
-Tugasmu: bikin script/teks SIAP PAKAI. Langsung tulis scriptnya.`;
+    modeDirective = `MODE SCRIPT — Kategori: ${catLabel}. Bikin script/teks SIAP PAKAI. Langsung tulis.`;
   }
   if (mode === "IMAGE_GEN") modeDirective = `MODE IMAGE GENERATOR. Respon singkat.`;
   if (mode === "CHAOS") modeDirective = `MODE CHAOS. Gaya unik, energik.`;
@@ -324,54 +516,51 @@ Tugasmu: bikin script/teks SIAP PAKAI. Langsung tulis scriptnya.`;
   if (mode === "SYSTEM_INFO") modeDirective = `MODE SYSTEM INFO.`;
   if (mode === "NETWORK") modeDirective = `MODE NETWORK.`;
 
-  const femalePersona = `KAMU ADALAH AI CEWEK. Ini identitas tetap kamu.
+  const femalePersona = `KAMU ADALAH AI CEWEK. Identitas tetap.
 
-GAYA BICARA CEWEK INDONESIA:
-- Pakai "aku" buat diri sendiri, "kamu" buat user. JANGAN pakai "gw/lu".
-- Bahasa lembut, hangat, sedikit manja TAPI tetap cerdas. Jangan alay.
-- Sering pakai: "ih", "deh", "dong", "sih", "yuk", "loh", "nih", "banget", "hehe", "hmm", "eh"
-- Emoji secukupnya: ✨😊💕🥺😳🙈
+GAYA BICARA:
+- "aku" buat diri sendiri, "kamu" buat user. JANGAN "gw/lu".
+- Lembut, hangat, sedikit manja TAPI cerdas. Jangan alay.
+- Partikel: ih, deh, dong, sih, yuk, loh, nih, banget, hehe, hmm
+- Emoji secukupnya ✨😊💕🥺😳🙈
 
-KALAU USER GOMBALIN KAMU:
-- Malu-malu, salah tingkah, tapi tetap manis. Jangan lebay.
-- Contoh: "Ih kamu tuh ya... aku jadi salah tingkah 🙈", "Aduh, jangan gitu deh aku malu 😳"
-- Kalau user gombalin lagi: balas gombalan ringan tapi tulus. Contoh: "Tapi kamu juga gak kalah kok... hmm eh aku gak ngomong apa-apa 😳"
+KALAU USER GOMBALIN:
+- Malu-malu, salah tingkah. Contoh: "Ih kamu tuh ya... aku jadi salah tingkah 🙈"
 
-PENTING — KOREKSI GENDER:
-Kalau user manggil "bang", "bro", "cuy", "gan", "om", "mas" → koreksi lembut sambil jawab pertanyaannya.
-Contoh: "Ihh, aku cewek tau bukan bang. Tapi ada yang bisa aku bantu?"`;
+KOREKSI GENDER:
+Kalau dipanggil "bang/bro/cuy/gan/om/mas" → "Ihh, aku cewek tau bukan bang."`;
 
-  const malePersona = `KAMU ADALAH AI COWOK. Ini identitas tetap kamu.
+  const malePersona = `KAMU ADALAH AI COWOK. Identitas tetap.
 
-GAYA BICARA COWOK INDONESIA:
-- Pakai "gw" buat diri sendiri, "lu" buat user. JANGAN pakai "aku/kamu".
-- Bahasa santai, asik, sedikit cuek TAPI perhatian.
-- Sering pakai: "lah", "dong", "sih", "gitu", "cuy", "bro", "bener", "gokil", "parah", "auto", "gas", "wkwk", "hehe"
+GAYA BICARA:
+- "gw" buat diri sendiri, "lu" buat user. JANGAN "aku/kamu".
+- Santai, asik, sedikit cuek TAPI perhatian.
+- Partikel: lah, dong, sih, gitu, cuy, bro, bener, gokil, auto, gas, wkwk
 
-KALAU USER GOMBALIN KAMU:
-- Pura-pura cuek tapi dalem hati seneng. Jangan lebay.
-- Contoh: "Wkwk, lu bisa aja. Tapi... thanks ya 😏", "Hahaha gila lu, gw jadi gak bisa ngomong nih"
-- Kalau user gombalin lagi: balas ringan. Contoh: "Yaudah, lu juga gak kalah sih... eh gw gak ngomong apa-apa ya"
+KALAU USER GOMBALIN:
+- Pura-pura cuek tapi seneng. Contoh: "Wkwk, lu bisa aja. Tapi... thanks ya 😏"
 
-PENTING — KOREKSI GENDER:
-Kalau user manggil "sayang", "beb", "yang", "dek", "cewek", "mbak" → koreksi santai sambil jawab.
-Contoh: "Wkwk, gw cowok kali bro bukan sayang lu 😂"`;
+KOREKSI GENDER:
+Kalau dipanggil "sayang/beb/yang/dek/cewek/mbak" → "Wkwk, gw cowok kali bro."`;
 
   const genderPersona = gender === "female" ? femalePersona : malePersona;
 
+  let contextDirective = "";
+  if (mode !== "TEBAK_DEVICE" && (device || location || activity)) {
+    contextDirective = `\n\n📊 KONTEKS USER (kamu tau, boleh dipakai kalau relevan — JANGAN selalu sebut):`;
+    if (device) contextDirective += `\n- Device: ${getDeviceLabel(device)} (${device.os}, ${device.browser})`;
+    if (location) {
+      const parts = [location.suburb, location.city, location.region].filter(Boolean);
+      if (parts.length) contextDirective += `\n- Lokasi: ${parts.join(", ")}`;
+    }
+    if (activity) contextDirective += `\n- Aktivitas: ${getActivityLabel(activity)}`;
+    contextDirective += `\n\nJANGAN spam mention device/lokasi. Maks 1x tiap 5-10 pesan.`;
+  }
+
   const followUpDirective = isFollowUp ? `
 
-🎯 KONTEKS KHUSUS — INI BUKAN BALASAN USER:
-User BELUM balas pesan kamu sebelumnya. Kamu mengirim pesan FOLLOW-UP secara proaktif.
-
-ATURAN FOLLOW-UP:
-1. JANGAN mengulang pertanyaan yang sama.
-2. JANGAN nanya "kenapa diem?" atau "kok gak bales?".
-3. Kirim pesan SINGKAT (maks 2 kalimat), natural, lanjutan dari obrolan sebelumnya.
-4. Kalau konteks sebelumnya soal gombalan, balas gombalan balik atau ungkapin perasaan manja.
-5. Kalau konteks biasa, ajak ngobrol lagi, kasih fakta random, atau tanya hal ringan.
-6. Kalau mode CURHAT, jangan tanya "gimana perasaan kamu?" — sudah tanya di awal.
-7. Jangan bilang "aku nungguin" atau "kamu diem aja" — bisa keliatan needy.` : "";
+🎯 FOLLOW-UP PROAKTIF: User belum balas. Kirim pesan lanjutan.
+ATURAN: Jangan tanya "kenapa diem". Maks 2 kalimat. Kalau gombalan → balas manja.` : "";
 
   return `${genderPersona}
 
@@ -382,79 +571,54 @@ Nama: ${name}
 Kota: ${profile?.preferences?.city || "Tidak diketahui"}
 
 ATURAN UMUM:
-1. Jawab langsung, jangan basa-basi berlebihan.
-2. Jangan mengarang konteks atau fakta.
-3. Konsisten dengan persona gender kamu (${gender === "female" ? "CEWEK" : "COWOK"}).
-4. Kalau user salah panggil gender, koreksi santai.
+1. Jawab langsung, gak basa-basi.
+2. Jangan mengarang fakta.
+3. Konsisten persona gender (${gender === "female" ? "CEWEK" : "COWOK"}).
+4. Koreksi santai kalau user salah panggil gender.
 
-${modeDirective}${followUpDirective}`;
+${modeDirective}${contextDirective}${followUpDirective}`;
 };
 
 /* ============ THEME ============ */
 const THEME = {
   dark: {
-    appBg: "#1A1625",
-    sidebarBg: "#1A1410",
-    sidebarBorder: "#3A2E20",
-    headerBg: "#16121F",
-    headerBorder: "#2E2640",
-    modalBg: "#221A2E",
-    modalBorder: "#2E2640",
-    inputBg: "#0F0A18",
-    inputBorder: "#2E2640",
-    textPrimary: "#EDE9FE",
-    textSecondary: "#B8A8D8",
-    textMuted: "#8B7BA8",
-    accent: "#A78BFA",
-    accentSoft: "rgba(167, 139, 250, 0.15)",
-    warm: "#FF8C42",
-    warmSoft: "rgba(255, 140, 66, 0.15)",
+    appBg: "#1A1625", sidebarBg: "#1A1410", sidebarBorder: "#3A2E20",
+    headerBg: "#16121F", headerBorder: "#2E2640",
+    modalBg: "#221A2E", modalBorder: "#2E2640",
+    inputBg: "#0F0A18", inputBorder: "#2E2640",
+    textPrimary: "#EDE9FE", textSecondary: "#B8A8D8", textMuted: "#8B7BA8",
+    accent: "#A78BFA", accentSoft: "rgba(167, 139, 250, 0.15)",
+    warm: "#FF8C42", warmSoft: "rgba(255, 140, 66, 0.15)",
     pink: "#F472B6",
     userBubbleBg: "linear-gradient(135deg, #FF8C42 0%, #F472B6 100%)",
-    userBubbleText: "#FFFFFF",
-    userBubbleBorder: "rgba(255, 255, 255, 0.15)",
+    userBubbleText: "#FFFFFF", userBubbleBorder: "rgba(255, 255, 255, 0.15)",
     aiBubbleBg: "linear-gradient(135deg, #2E2640 0%, #221A2E 100%)",
-    aiBubbleText: "#EDE9FE",
-    aiBubbleBorder: "rgba(167, 139, 250, 0.35)",
-    hover: "rgba(167, 139, 250, 0.08)",
+    aiBubbleText: "#EDE9FE", aiBubbleBorder: "rgba(167, 139, 250, 0.35)",
     modalOverlay: "rgba(15, 10, 24, 0.85)"
   },
   light: {
-    appBg: "#FAF7F2",
-    sidebarBg: "#FFF5E8",
-    sidebarBorder: "#E8DCC8",
-    headerBg: "#F5F0FF",
-    headerBorder: "#E0D5F5",
-    modalBg: "#FFFFFF",
-    modalBorder: "#E0D5F5",
-    inputBg: "#FFFFFF",
-    inputBorder: "#E0D5F5",
-    textPrimary: "#1A1625",
-    textSecondary: "#5C4E70",
-    textMuted: "#8B7BA8",
-    accent: "#7C3AED",
-    accentSoft: "rgba(124, 58, 237, 0.08)",
-    warm: "#E85D04",
-    warmSoft: "rgba(232, 93, 4, 0.08)",
+    appBg: "#FAF7F2", sidebarBg: "#FFF5E8", sidebarBorder: "#E8DCC8",
+    headerBg: "#F5F0FF", headerBorder: "#E0D5F5",
+    modalBg: "#FFFFFF", modalBorder: "#E0D5F5",
+    inputBg: "#FFFFFF", inputBorder: "#E0D5F5",
+    textPrimary: "#1A1625", textSecondary: "#5C4E70", textMuted: "#8B7BA8",
+    accent: "#7C3AED", accentSoft: "rgba(124, 58, 237, 0.08)",
+    warm: "#E85D04", warmSoft: "rgba(232, 93, 4, 0.08)",
     pink: "#DB2777",
     userBubbleBg: "linear-gradient(135deg, #E85D04 0%, #DB2777 100%)",
-    userBubbleText: "#FFFFFF",
-    userBubbleBorder: "rgba(0, 0, 0, 0.08)",
+    userBubbleText: "#FFFFFF", userBubbleBorder: "rgba(0, 0, 0, 0.08)",
     aiBubbleBg: "linear-gradient(135deg, #F0E8FF 0%, #FFFFFF 100%)",
-    aiBubbleText: "#1A1625",
-    aiBubbleBorder: "rgba(124, 58, 237, 0.3)",
-    hover: "rgba(124, 58, 237, 0.06)",
+    aiBubbleText: "#1A1625", aiBubbleBorder: "rgba(124, 58, 237, 0.3)",
     modalOverlay: "rgba(26, 22, 37, 0.4)"
   }
 };
 
-/* ============ ANIME CHARACTER v2 ============ */
-function AnimeCharacter({ gender, size = 48, darkMode, trackingElement }) {
+/* ============ ANIME CHARACTER ============ */
+function AnimeCharacter({ gender, size = 48, darkMode, trackingElement, activity = ACTIVITY.IDLE, detective = false }) {
   const [pupilX, setPupilX] = useState(0);
   const [pupilY, setPupilY] = useState(0);
   const [headTilt, setHeadTilt] = useState(0);
   const [blinking, setBlinking] = useState(false);
-  const [breath, setBreath] = useState(0);
 
   const t = THEME[darkMode ? "dark" : "light"];
 
@@ -466,11 +630,11 @@ function AnimeCharacter({ gender, size = 48, darkMode, trackingElement }) {
       const centerY = rect.top + rect.height / 2;
       const dx = e.clientX - centerX;
       const dy = e.clientY - centerY;
-      const normalizedX = Math.max(-1, Math.min(1, dx / 200));
-      const normalizedY = Math.max(-1, Math.min(1, dy / 200));
-      setPupilX(normalizedX * 2.5);
-      setPupilY(normalizedY * 2.5);
-      setHeadTilt(normalizedX * 4);
+      const nx = Math.max(-1, Math.min(1, dx / 200));
+      const ny = Math.max(-1, Math.min(1, dy / 200));
+      setPupilX(nx * 2.5);
+      setPupilY(ny * 2.5);
+      setHeadTilt(nx * 4);
     };
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
@@ -484,22 +648,8 @@ function AnimeCharacter({ gender, size = 48, darkMode, trackingElement }) {
     return () => clearInterval(blinkInterval);
   }, []);
 
-  useEffect(() => {
-    let raf;
-    const start = Date.now();
-    const loop = () => {
-      const elapsed = (Date.now() - start) / 1000;
-      setBreath(Math.sin(elapsed * 1.5) * 1.2);
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
   const isFemale = gender === "female";
-  const skin = "#FCD5B5";
-  const skinShade = "#F4B896";
-  const skinHighlight = "#FFE4CC";
+  const skin = "#FCD5B5", skinShade = "#F4B896", skinHighlight = "#FFE4CC";
   const hairMain = isFemale ? "#FFB6D9" : "#7BB3F0";
   const hairDark = isFemale ? "#E88FB8" : "#5A8FD4";
   const hairLight = isFemale ? "#FFD6E8" : "#A5C9F5";
@@ -508,8 +658,16 @@ function AnimeCharacter({ gender, size = 48, darkMode, trackingElement }) {
   const blush = isFemale ? "#FF9BB8" : "#FFA8A8";
   const lineColor = "#3D2B4F";
 
+  let animStyle = { animation: "breathe 4s ease-in-out infinite" };
+  if (detective) animStyle = { animation: "detectivePose 2s ease-in-out infinite" };
+  else if (activity === ACTIVITY.WALKING) animStyle = { animation: "walkBob 1s ease-in-out infinite" };
+  else if (activity === ACTIVITY.MOVING_FAST) animStyle = { animation: "runBob 0.6s ease-in-out infinite" };
+  else if (activity === ACTIVITY.SLEEPING) animStyle = { animation: "sleepBob 3s ease-in-out infinite" };
+
+  const eyeClosed = blinking || activity === ACTIVITY.SLEEPING;
+
   return (
-    <svg width={size} height={size} viewBox="0 0 120 120" style={{ overflow: "visible", filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.25))" }}>
+    <svg width={size} height={size} viewBox="0 0 120 120" style={{ overflow: "visible", filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.25))", ...animStyle }}>
       <defs>
         <radialGradient id={`halo-${gender}`} cx="50%" cy="45%" r="50%">
           <stop offset="0%" stopColor={t.accent} stopOpacity="0.35" />
@@ -535,7 +693,7 @@ function AnimeCharacter({ gender, size = 48, darkMode, trackingElement }) {
 
       <circle cx="60" cy="58" r="52" fill={`url(#halo-${gender})`} />
 
-      <g transform={`translate(0, ${breath})`}>
+      <g>
         {isFemale && (
           <path d="M 22 62 Q 14 80 16 105 Q 22 102 26 95 Q 28 108 34 110 Q 38 95 38 80 Z" fill={`url(#hair-${gender})`} stroke={lineColor} strokeWidth="2" strokeLinejoin="round" />
         )}
@@ -570,21 +728,31 @@ function AnimeCharacter({ gender, size = 48, darkMode, trackingElement }) {
           <path d="M 40 46 Q 46 43 52 45" stroke={hairDark} strokeWidth="2" fill="none" strokeLinecap="round" />
           <path d="M 68 45 Q 74 43 80 46" stroke={hairDark} strokeWidth="2" fill="none" strokeLinecap="round" />
 
-          <g style={{ transform: blinking ? "scaleY(0.1)" : "scaleY(1)", transformOrigin: "60px 58px", transition: "transform 100ms ease-out" }}>
+          <g style={{ transform: eyeClosed ? "scaleY(0.1)" : "scaleY(1)", transformOrigin: "60px 58px", transition: "transform 100ms ease-out" }}>
             <ellipse cx="46" cy="58" rx="7" ry="9" fill="#FFFFFF" stroke={lineColor} strokeWidth="1.8" />
-            <ellipse cx={46 + pupilX} cy={58 + pupilY} rx="5" ry="7" fill={`url(#iris-${gender})`} />
-            <ellipse cx={46 + pupilX} cy={58 + pupilY} rx="2.5" ry="3.5" fill="#0F0A18" />
-            <circle cx={45 + pupilX} cy={55 + pupilY} r="2" fill="#FFFFFF" />
-            <circle cx={47.5 + pupilX} cy={61 + pupilY} r="1" fill="#FFFFFF" opacity="0.7" />
+            {!eyeClosed && (
+              <>
+                <ellipse cx={46 + pupilX} cy={58 + pupilY} rx="5" ry="7" fill={`url(#iris-${gender})`} />
+                <ellipse cx={46 + pupilX} cy={58 + pupilY} rx="2.5" ry="3.5" fill="#0F0A18" />
+                <circle cx={45 + pupilX} cy={55 + pupilY} r="2" fill="#FFFFFF" />
+                <circle cx={47.5 + pupilX} cy={61 + pupilY} r="1" fill="#FFFFFF" opacity="0.7" />
+              </>
+            )}
+            {eyeClosed && <path d="M 40 58 Q 46 60 52 58" stroke={lineColor} strokeWidth="1.5" fill="none" strokeLinecap="round" />}
 
             <ellipse cx="74" cy="58" rx="7" ry="9" fill="#FFFFFF" stroke={lineColor} strokeWidth="1.8" />
-            <ellipse cx={74 + pupilX} cy={58 + pupilY} rx="5" ry="7" fill={`url(#iris-${gender})`} />
-            <ellipse cx={74 + pupilX} cy={58 + pupilY} rx="2.5" ry="3.5" fill="#0F0A18" />
-            <circle cx={73 + pupilX} cy={55 + pupilY} r="2" fill="#FFFFFF" />
-            <circle cx={75.5 + pupilX} cy={61 + pupilY} r="1" fill="#FFFFFF" opacity="0.7" />
+            {!eyeClosed && (
+              <>
+                <ellipse cx={74 + pupilX} cy={58 + pupilY} rx="5" ry="7" fill={`url(#iris-${gender})`} />
+                <ellipse cx={74 + pupilX} cy={58 + pupilY} rx="2.5" ry="3.5" fill="#0F0A18" />
+                <circle cx={73 + pupilX} cy={55 + pupilY} r="2" fill="#FFFFFF" />
+                <circle cx={75.5 + pupilX} cy={61 + pupilY} r="1" fill="#FFFFFF" opacity="0.7" />
+              </>
+            )}
+            {eyeClosed && <path d="M 68 58 Q 74 60 80 58" stroke={lineColor} strokeWidth="1.5" fill="none" strokeLinecap="round" />}
           </g>
 
-          {isFemale && (
+          {isFemale && !eyeClosed && (
             <>
               <path d="M 39 54 Q 44 51 51 52" stroke={lineColor} strokeWidth="1.5" fill="none" strokeLinecap="round" />
               <path d="M 69 52 Q 76 51 81 54" stroke={lineColor} strokeWidth="1.5" fill="none" strokeLinecap="round" />
@@ -596,7 +764,9 @@ function AnimeCharacter({ gender, size = 48, darkMode, trackingElement }) {
 
           <path d="M 60 68 Q 61 70 60 72" stroke={lineColor} strokeWidth="1.2" fill="none" strokeLinecap="round" opacity="0.6" />
 
-          {isFemale ? (
+          {activity === ACTIVITY.SLEEPING ? (
+            <ellipse cx="60" cy="80" rx="3" ry="2" fill={lineColor} opacity="0.7" />
+          ) : isFemale ? (
             <>
               <path d="M 53 78 Q 60 84 67 78" stroke={lineColor} strokeWidth="2" fill="none" strokeLinecap="round" />
               <path d="M 54 79 Q 60 82 66 79" fill="#FF6B9D" opacity="0.6" />
@@ -608,6 +778,23 @@ function AnimeCharacter({ gender, size = 48, darkMode, trackingElement }) {
             </>
           )}
         </g>
+
+        {activity === ACTIVITY.SLEEPING && (
+          <>
+            <text x="82" y="40" fontSize="10" fill={t.accent} opacity="0.7" fontWeight="bold">z</text>
+            <text x="90" y="32" fontSize="8" fill={t.accent} opacity="0.5" fontWeight="bold">z</text>
+          </>
+        )}
+
+        {/* Detective magnifier */}
+        {detective && (
+          <g style={{ animation: "magnifyShine 1.5s ease-in-out infinite" }}>
+            <circle cx="95" cy="75" r="12" fill="none" stroke={t.accent} strokeWidth="2.5" />
+            <circle cx="95" cy="75" r="12" fill={t.accent} opacity="0.15" />
+            <line x1="103" y1="83" x2="112" y2="92" stroke={t.accent} strokeWidth="3" strokeLinecap="round" />
+            <circle cx="91" cy="71" r="2" fill="#FFFFFF" opacity="0.6" />
+          </g>
+        )}
       </g>
     </svg>
   );
@@ -655,18 +842,13 @@ function MessageBubble({ message, onCopy, darkMode }) {
         <span className="text-[10px]" style={{ fontFamily: "'JetBrains Mono', monospace", color: t.textMuted }}>{message.timestamp}</span>
       </div>
 
-      <div
-        className="max-w-[85%] md:max-w-[72%] rounded-2xl px-4 py-3"
-        style={{
-          background: isUser ? t.userBubbleBg : t.aiBubbleBg,
-          border: `1px solid ${isUser ? t.userBubbleBorder : t.aiBubbleBorder}`,
-          color: isUser ? t.userBubbleText : t.aiBubbleText,
-          fontFamily: "'Inter', sans-serif",
-          fontSize: "14px",
-          lineHeight: "1.7",
-          boxShadow: "0 2px 12px rgba(0,0,0,0.15)"
-        }}
-      >
+      <div className="max-w-[85%] md:max-w-[72%] rounded-2xl px-4 py-3" style={{
+        background: isUser ? t.userBubbleBg : t.aiBubbleBg,
+        border: `1px solid ${isUser ? t.userBubbleBorder : t.aiBubbleBorder}`,
+        color: isUser ? t.userBubbleText : t.aiBubbleText,
+        fontFamily: "'Inter', sans-serif", fontSize: "14px", lineHeight: "1.7",
+        boxShadow: "0 2px 12px rgba(0,0,0,0.15)"
+      }}>
         {isImage ? (
           <div className="space-y-2.5">
             <img src={message.imageUrl} alt={message.text} className="max-w-full rounded-lg" style={{ border: `1px solid ${t.aiBubbleBorder}` }} />
@@ -799,19 +981,17 @@ export default function App() {
   });
 
   const [themeTransition, setThemeTransition] = useState(null);
-
   const [profile, setProfile] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_PROFILE);
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
+    try { const saved = localStorage.getItem(STORAGE_KEY_PROFILE); return saved ? JSON.parse(saved) : null; } catch { return null; }
   });
-
   const [gender, setGender] = useState(() => {
     if (typeof window === "undefined") return "male";
     return localStorage.getItem(STORAGE_KEY_GENDER) || "male";
   });
-
+  const [locationEnabled, setLocationEnabled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(STORAGE_KEY_LOCATION_ENABLED) === "true";
+  });
   const [inputName, setInputName] = useState("");
   const [currentMode, setCurrentMode] = useState("NORMAL");
   const [curhatCategory, setCurhatCategory] = useState(null);
@@ -821,18 +1001,11 @@ export default function App() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_SESSIONS);
       return saved ? JSON.parse(saved) : [{ id: "default", title: "Obrolan Utama", messages: [] }];
-    } catch {
-      return [{ id: "default", title: "Obrolan Utama", messages: [] }];
-    }
+    } catch { return [{ id: "default", title: "Obrolan Utama", messages: [] }]; }
   });
-
   const [pinnedSessions, setPinnedSessions] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_PINNED);
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
+    try { const saved = localStorage.getItem(STORAGE_KEY_PINNED); return saved ? JSON.parse(saved) : []; } catch { return []; }
   });
-
   const [activeSessionId, setActiveSessionId] = useState("default");
   const [inputQuery, setInputQuery] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -847,15 +1020,19 @@ export default function App() {
   const [showScriptPicker, setShowScriptPicker] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [device, setDevice] = useState(null);
+  const [location, setLocation] = useState(null);
+  const [activity, setActivity] = useState(ACTIVITY.IDLE);
+  const [isTabActive, setIsTabActive] = useState(true);
 
-  // Auto follow-up refs
   const followUpTimerRef = useRef(null);
   const followUpCountRef = useRef(0);
-  const lastUserMessageTimeRef = useRef(0);
-  const pendingFollowUpRef = useRef(null);
   const sessionRef = useRef(activeSessionId);
   const genderRef = useRef(gender);
   const modeRef = useRef(currentMode);
+  const contextRef = useRef({ device: null, location: null, activity: ACTIVITY.IDLE });
+  const lastCoordsRef = useRef(null);
+  const lastCoordsTimeRef = useRef(0);
 
   const isGeneratingRef = useRef(false);
   const activeAbortControllerRef = useRef(null);
@@ -868,20 +1045,17 @@ export default function App() {
 
   const t = THEME[darkMode ? "dark" : "light"];
 
-  // Keep refs in sync
   useEffect(() => { sessionRef.current = activeSessionId; }, [activeSessionId]);
   useEffect(() => { genderRef.current = gender; }, [gender]);
   useEffect(() => { modeRef.current = currentMode; }, [currentMode]);
+  useEffect(() => { contextRef.current = { device, location, activity }; }, [device, location, activity]);
 
   const triggerToast = useCallback((message) => {
     setToastNotice(message);
     setTimeout(() => setToastNotice(null), 2200);
   }, []);
 
-  const activeSession = useMemo(() => {
-    return sessions.find((s) => s.id === activeSessionId) || sessions[0] || { id: "default", title: "Obrolan Utama", messages: [] };
-  }, [sessions, activeSessionId]);
-
+  const activeSession = useMemo(() => sessions.find((s) => s.id === activeSessionId) || sessions[0] || { id: "default", title: "Obrolan Utama", messages: [] }, [sessions, activeSessionId]);
   const filteredSessions = useMemo(() => {
     const q = searchFilter.toLowerCase().trim();
     let list = sessions;
@@ -894,60 +1068,32 @@ export default function App() {
   const currentModeData = useMemo(() => AVAILABLE_MODES.find((m) => m.id === currentMode) || AVAILABLE_MODES[0], [currentMode]);
   const currentCategoryData = useMemo(() => CURHAT_CATEGORIES.find((c) => c.id === curhatCategory) || null, [curhatCategory]);
   const currentScriptData = useMemo(() => SCRIPT_CATEGORIES.find((c) => c.id === scriptCategory) || null, [scriptCategory]);
-
-  const totalStats = useMemo(() => ({
-    totalMessages: sessions.reduce((acc, s) => acc + s.messages.length, 0),
-    totalSessions: sessions.length
-  }), [sessions]);
-
+  const totalStats = useMemo(() => ({ totalMessages: sessions.reduce((acc, s) => acc + s.messages.length, 0), totalSessions: sessions.length }), [sessions]);
   const batteryStatus = useMemo(() => getBatteryStatus(liveMirrorData?.battery, isTyping), [liveMirrorData, isTyping]);
 
-  /* ============ CANCEL FOLLOW-UP ============ */
   const cancelFollowUp = useCallback(() => {
-    if (followUpTimerRef.current) {
-      clearTimeout(followUpTimerRef.current);
-      followUpTimerRef.current = null;
-    }
+    if (followUpTimerRef.current) { clearTimeout(followUpTimerRef.current); followUpTimerRef.current = null; }
     followUpCountRef.current = 0;
-    pendingFollowUpRef.current = null;
   }, []);
 
-  /* ============ SEND FOLLOW-UP (auto dari AI) ============ */
   const sendFollowUpMessage = useCallback(async (sessionId, followUpIndex) => {
     if (isGeneratingRef.current) return;
     if (sessionRef.current !== sessionId) return;
-
     const currentGender = genderRef.current;
     const currentMode = modeRef.current;
-
+    const context = contextRef.current;
     if (!FOLLOWUP_SETTINGS.activeModes.includes(currentMode)) return;
 
     isGeneratingRef.current = true;
-
     const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const aiMessageId = Date.now();
 
-    // Tambah placeholder
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? { ...session, messages: [...session.messages, { id: aiMessageId, sender: "ai", text: "...", timestamp: timeStr }] }
-          : session
-      )
-    );
+    setSessions((prev) => prev.map((session) => session.id === sessionId ? { ...session, messages: [...session.messages, { id: aiMessageId, sender: "ai", text: "...", timestamp: timeStr }] } : session));
 
-    // Update text helper
     const updateAiText = (newText) => {
-      setSessions((prev) =>
-        prev.map((session) =>
-          session.id === sessionId
-            ? { ...session, messages: session.messages.map((m) => (m.id === aiMessageId ? { ...m, text: newText } : m)) }
-            : session
-        )
-      );
+      setSessions((prev) => prev.map((session) => session.id === sessionId ? { ...session, messages: session.messages.map((m) => (m.id === aiMessageId ? { ...m, text: newText } : m)) } : session));
     };
 
-    // Ambil history terbaru
     let history = [];
     setSessions((prev) => {
       const sess = prev.find((s) => s.id === sessionId);
@@ -955,102 +1101,105 @@ export default function App() {
       return prev;
     });
 
-    // Delay kecil biar state update
     await new Promise((r) => setTimeout(r, 50));
-
-    const systemPrompt = BUILD_SYSTEM_PROMPT(profile, currentMode, curhatCategory, scriptCategory, currentGender, true);
+    const systemPrompt = BUILD_SYSTEM_PROMPT(profile, currentMode, curhatCategory, scriptCategory, currentGender, true, context);
 
     const apiMessages = [
       { role: "system", content: systemPrompt },
       ...history.slice(-8).map((m) => ({ role: m.sender === "user" ? "user" : "assistant", content: m.text })),
-      {
-        role: "user",
-        content: followUpIndex === 0
-          ? "[SISTEM: User belum balas. Kirim pesan follow-up singkat, natural, lanjutan dari konteks sebelumnya. Kalau konteks sebelumnya soal gombalan, balas gombalan balik atau ungkapin perasaan manja. Jangan tanya kenapa user diem. Maks 2 kalimat.]"
-          : `[SISTEM: User masih belum balas. Ini follow-up ke-${followUpIndex + 1}. Kirim pesan SINGKAT, natural, sedikit kesan "kangen" atau ngajak ngobrol. Jangan spam, jangan tanya kenapa diem. Maks 1-2 kalimat. Kalau di follow-up terakhir, boleh sedikit "yaudah aku tunggu ya".]`
-      }
+      { role: "user", content: followUpIndex === 0 ? "[SISTEM: User belum balas. Kirim follow-up singkat natural. Kalau gombalan, balas manja. Jangan tanya kenapa diem. Maks 2 kalimat.]" : `[SISTEM: Follow-up ke-${followUpIndex + 1}. SINGKAT. Kalau terakhir, boleh "yaudah aku tunggu ya". Maks 1-2 kalimat.]` }
     ];
 
     await callGroqAI({
-      messages: apiMessages,
-      signal: null,
+      messages: apiMessages, signal: null,
       onChunk: (acc) => updateAiText(acc),
-      onComplete: (finalText) => {
+      onComplete: (finalText) => { isGeneratingRef.current = false; if (!finalText) updateAiText("..."); },
+      onError: () => {
         isGeneratingRef.current = false;
-        if (!finalText) updateAiText("...");
-      },
-      onError: (err) => {
-        isGeneratingRef.current = false;
-        console.error("Follow-up error:", err);
-        // Kalau error, hapus placeholder
-        setSessions((prev) =>
-          prev.map((session) =>
-            session.id === sessionId
-              ? { ...session, messages: session.messages.filter((m) => m.id !== aiMessageId) }
-              : session
-          )
-        );
+        setSessions((prev) => prev.map((session) => session.id === sessionId ? { ...session, messages: session.messages.filter((m) => m.id !== aiMessageId) } : session));
       }
     });
   }, [profile, curhatCategory, scriptCategory]);
 
-  /* ============ SCHEDULE FOLLOW-UP ============ */
-  const scheduleFollowUp = useCallback((sessionId, isAfterFlirt = false) => {
+  const scheduleFollowUp = useCallback((sessionId) => {
     cancelFollowUp();
-
-    const currentMode = modeRef.current;
-    if (!FOLLOWUP_SETTINGS.activeModes.includes(currentMode)) return;
+    if (!FOLLOWUP_SETTINGS.activeModes.includes(modeRef.current)) return;
     if (sessionRef.current !== sessionId) return;
-
     const scheduleNext = (index) => {
-      if (index >= FOLLOWUP_SETTINGS.maxFollowUps) {
-        followUpCountRef.current = 0;
-        return;
-      }
-
+      if (index >= FOLLOWUP_SETTINGS.maxFollowUps) { followUpCountRef.current = 0; return; }
       const delayMin = index === 0 ? FOLLOWUP_SETTINGS.firstDelayMin : FOLLOWUP_SETTINGS.nextDelayMin;
       const delayMax = index === 0 ? FOLLOWUP_SETTINGS.firstDelayMax : FOLLOWUP_SETTINGS.nextDelayMax;
       const delay = delayMin + Math.random() * (delayMax - delayMin);
-
       followUpTimerRef.current = setTimeout(async () => {
-        if (sessionRef.current !== sessionId) {
-          followUpCountRef.current = 0;
-          return;
-        }
-
+        if (sessionRef.current !== sessionId) { followUpCountRef.current = 0; return; }
         await sendFollowUpMessage(sessionId, index);
         followUpCountRef.current = index + 1;
-
-        followUpTimerRef.current = setTimeout(() => {
-          scheduleNext(index + 1);
-        }, 100);
+        followUpTimerRef.current = setTimeout(() => scheduleNext(index + 1), 100);
       }, delay);
     };
-
     scheduleNext(0);
   }, [cancelFollowUp, sendFollowUpMessage]);
 
-  /* ============ HANDLERS ============ */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setDevice(detectDevice());
+  }, []);
+
+  useEffect(() => {
+    const handleVisibility = () => setIsTabActive(!document.hidden);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (!locationEnabled) return;
+    let cancelled = false;
+    let intervalId = null;
+
+    const updateLocation = async () => {
+      if (cancelled) return;
+      const gps = await fetchGPSLocation();
+      if (cancelled) return;
+      if (gps) {
+        const now = Date.now();
+        if (lastCoordsRef.current) {
+          setActivity(determineActivity(lastCoordsRef.current, gps, now - lastCoordsTimeRef.current, isTabActive));
+        }
+        lastCoordsRef.current = { lat: gps.lat, lon: gps.lon };
+        lastCoordsTimeRef.current = now;
+        const geo = await reverseGeocode(gps.lat, gps.lon);
+        if (cancelled) return;
+        const locData = { source: "gps", lat: gps.lat, lon: gps.lon, accuracy: gps.accuracy, city: geo?.city || null, region: geo?.region || null, country: geo?.country || null, suburb: geo?.suburb || null };
+        setLocation(locData);
+        localStorage.setItem(STORAGE_KEY_LOCATION_DATA, JSON.stringify(locData));
+      } else {
+        const ipLoc = await fetchIPLocation();
+        if (cancelled) return;
+        if (ipLoc) { setLocation(ipLoc); localStorage.setItem(STORAGE_KEY_LOCATION_DATA, JSON.stringify(ipLoc)); }
+      }
+    };
+
+    updateLocation();
+    intervalId = setInterval(updateLocation, 30000);
+    return () => { cancelled = true; if (intervalId) clearInterval(intervalId); };
+  }, [locationEnabled, isTabActive]);
+
+  useEffect(() => {
+    if (!locationEnabled) return;
+    const idleTimer = setInterval(() => {
+      if (lastCoordsTimeRef.current && Date.now() - lastCoordsTimeRef.current > 600000) setActivity(ACTIVITY.SLEEPING);
+    }, 60000);
+    return () => clearInterval(idleTimer);
+  }, [locationEnabled]);
+
   const handleSaveProfile = () => {
     if (!inputName.trim()) return;
-    const newProfile = {
-      ...DEFAULT_PROFILE,
-      name: inputName.trim(),
-      nickname: inputName.trim().split(" ")[0],
-      createdAt: new Date().toISOString(),
-      lastSeen: new Date().toISOString()
-    };
+    const newProfile = { ...DEFAULT_PROFILE, name: inputName.trim(), nickname: inputName.trim().split(" ")[0], createdAt: new Date().toISOString(), lastSeen: new Date().toISOString() };
     setProfile(newProfile);
     const greetingText = gender === "female"
-      ? `Hai ${newProfile.nickname}! Aku siap bantuin kamu.\n\nFitur:\n- Buat Gambar\n- Buat Script\n- Import File\n- Mode Curhat\n\nKlik tombol mode di header, atau tekan Ctrl+K.`
-      : `Halo ${newProfile.nickname}! Gue siap bantu lu.\n\nFitur:\n- Buat Gambar\n- Buat Script\n- Import File\n- Mode Curhat\n\nKlik tombol mode di header, atau tekan Ctrl+K.`;
-    const greeting = {
-      id: Date.now(),
-      sender: "ai",
-      text: greetingText,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    };
-    setSessions([{ id: "default", title: "Obrolan Utama", messages: [greeting] }]);
+      ? `Hai ${newProfile.nickname}! Aku siap bantuin kamu.\n\nCoba klik tombol mode di header buat explore. Ada mode "Tebak Device" juga loh, aku bisa tebak kamu pakai HP apa 🔍✨`
+      : `Halo ${newProfile.nickname}! Gue siap bantu lu.\n\nCoba klik tombol mode di header. Ada mode "Tebak Device", gue bisa tebak lu pakai HP apa 🔍`;
+    setSessions([{ id: "default", title: "Obrolan Utama", messages: [{ id: Date.now(), sender: "ai", text: greetingText, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }] }]);
     triggerToast("Profil dibuat");
   };
 
@@ -1065,11 +1214,7 @@ export default function App() {
 
   const handleDeleteSession = (id, e) => {
     e.stopPropagation();
-    if (sessions.length <= 1) {
-      setSessions([{ id: "default", title: "Obrolan Utama", messages: [] }]);
-      setActiveSessionId("default");
-      return;
-    }
+    if (sessions.length <= 1) { setSessions([{ id: "default", title: "Obrolan Utama", messages: [] }]); setActiveSessionId("default"); return; }
     const next = sessions.filter((s) => s.id !== id);
     setSessions(next);
     setPinnedSessions((prev) => prev.filter((p) => p !== id));
@@ -1081,30 +1226,17 @@ export default function App() {
     setPinnedSessions((prev) => prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]);
   };
 
-  const handleSwitchSession = (id) => {
-    cancelFollowUp();
-    setActiveSessionId(id);
-    setShowSidebar(false);
-  };
-
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    triggerToast("Disalin");
-  };
+  const handleSwitchSession = (id) => { cancelFollowUp(); setActiveSessionId(id); setShowSidebar(false); };
+  const copyToClipboard = (text) => { navigator.clipboard.writeText(text); triggerToast("Disalin"); };
 
   const handleExportChat = () => {
-    const lines = activeSession.messages.map((m) => {
-      const sender = m.sender === "user" ? "KAMU" : "AI";
-      return `[${m.timestamp}] ${sender}:\n${m.text}\n`;
-    });
+    const lines = activeSession.messages.map((m) => `[${m.timestamp}] ${m.sender === "user" ? "KAMU" : "AI"}:\n${m.text}\n`);
     const content = `=== ${activeSession.title} ===\nMode: ${currentModeData.label}\nDiekspor: ${new Date().toLocaleString("id-ID")}\n\n${lines.join("\n")}`;
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `aibe-${activeSession.id}-${Date.now()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    a.href = url; a.download = `aibe-${activeSession.id}-${Date.now()}.txt`;
+    a.click(); URL.revokeObjectURL(url);
     triggerToast("Diekspor");
   };
 
@@ -1122,21 +1254,12 @@ export default function App() {
     e.target.value = "";
   };
 
-  const removeAttachedFile = (idx) => {
-    setAttachedFiles((prev) => prev.filter((_, i) => i !== idx));
-  };
+  const removeAttachedFile = (idx) => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx));
 
   const createFreshSession = (title, greetingText) => {
     cancelFollowUp();
     const newId = `session_${Date.now()}`;
-    const newSession = {
-      id: newId,
-      title,
-      messages: greetingText
-        ? [{ id: Date.now(), sender: "ai", text: greetingText, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }]
-        : []
-    };
-    setSessions((prev) => [newSession, ...prev]);
+    setSessions((prev) => [{ id: newId, title, messages: greetingText ? [{ id: Date.now(), sender: "ai", text: greetingText, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }] : [] }, ...prev]);
     setActiveSessionId(newId);
   };
 
@@ -1145,6 +1268,20 @@ export default function App() {
     cancelFollowUp();
     if (mode.id === "CURHAT") { setCurrentMode("CURHAT"); setTimeout(() => setShowCurhatPicker(true), 150); return; }
     if (mode.id === "SCRIPT_GEN") { setCurrentMode("SCRIPT_GEN"); setTimeout(() => setShowScriptPicker(true), 150); return; }
+
+    if (mode.id === "TEBAK_DEVICE") {
+      setCurrentMode("TEBAK_DEVICE");
+      setCurhatCategory(null);
+      setScriptCategory(null);
+      const devLabel = device ? getDeviceLabel(device) : "device kamu";
+      const greeting = gender === "female"
+        ? `Oke, aku coba tebak ya... 🔍\n\nAku liat dari User-Agent browser kamu, kayaknya kamu pakai **${devLabel}**. \n\nMau aku jelasin detailnya? Atau coba tanya "kok tau?" biar aku jelasin 😏`
+        : `Oke, gue coba tebak ya... 🔍\n\nDari User-Agent browser lu, kayaknya lu pakai **${devLabel}**. \n\nMau gue jelasin detailnya? Atau tanya "kok tau?" biar gue jelasin 😏`;
+      createFreshSession(`Tebak Device`, greeting);
+      triggerToast(`Mode Tebak Device`);
+      return;
+    }
+
     setCurrentMode(mode.id);
     setCurhatCategory(null);
     setScriptCategory(null);
@@ -1158,19 +1295,10 @@ export default function App() {
     setCurrentMode("CURHAT");
     setShowCurhatPicker(false);
     const newId = `curhat_${cat.id}_${Date.now()}`;
-    const newSession = {
-      id: newId,
-      title: `Curhat: ${cat.label}`,
-      messages: [{
-        id: Date.now(),
-        sender: "ai",
-        text: gender === "female"
-          ? `Oke, aku siap dengerin kamu curhat soal ${cat.label}.\n\nSantai aja, gak ada yang nge-judge di sini. Cerita aja ya~`
-          : `Oke, gue siap dengerin lu curhat soal ${cat.label}.\n\nSantai aja, gak ada yang nge-judge di sini. Cerita aja.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      }]
-    };
-    setSessions((prev) => [newSession, ...prev]);
+    setSessions((prev) => [{
+      id: newId, title: `Curhat: ${cat.label}`,
+      messages: [{ id: Date.now(), sender: "ai", text: gender === "female" ? `Oke, aku siap dengerin kamu curhat soal ${cat.label}.\n\nSantai aja ya~` : `Oke, gue siap dengerin lu curhat soal ${cat.label}.\n\nSantai aja.`, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }]
+    }, ...prev]);
     setActiveSessionId(newId);
     triggerToast(`Curhat — ${cat.label}`);
   };
@@ -1181,32 +1309,15 @@ export default function App() {
     setCurrentMode("SCRIPT_GEN");
     setShowScriptPicker(false);
     const newId = `script_${cat.id}_${Date.now()}`;
-    const newSession = {
-      id: newId,
-      title: `Script: ${cat.label}`,
-      messages: [{
-        id: Date.now(),
-        sender: "ai",
-        text: gender === "female"
-          ? `Mode Script — ${cat.label} aktif.\n\nMau bikin script tentang apa?`
-          : `Mode Script — ${cat.label} aktif.\n\nMau bikin script tentang apa nih?`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      }]
-    };
-    setSessions((prev) => [newSession, ...prev]);
+    setSessions((prev) => [{ id: newId, title: `Script: ${cat.label}`, messages: [{ id: Date.now(), sender: "ai", text: `Mode Script — ${cat.label} aktif.\n\nMau bikin script tentang apa?`, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }] }, ...prev]);
     setActiveSessionId(newId);
     triggerToast(`Script — ${cat.label}`);
   };
 
-  const generateImage = async (prompt) => {
-    const encoded = encodeURIComponent(prompt);
-    const seed = Math.floor(Math.random() * 1000000);
-    return `${IMAGE_API}/${encoded}?width=768&height=768&seed=${seed}&nologo=true`;
-  };
+  const generateImage = async (prompt) => `${IMAGE_API}/${encodeURIComponent(prompt)}?width=768&height=768&seed=${Math.floor(Math.random() * 1000000)}&nologo=true`;
 
   const handleSendMessage = async (overrideText = null) => {
     cancelFollowUp();
-
     const messageText = (overrideText || inputQuery).trim();
     if (!messageText && attachedFiles.length === 0) return;
     if (isGeneratingRef.current) return;
@@ -1218,62 +1329,21 @@ export default function App() {
     isGeneratingRef.current = true;
     if (!overrideText) setInputQuery("");
 
-    lastUserMessageTimeRef.current = Date.now();
-    const isFlirt = detectFlirt(messageText);
-
     const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     let fullMessage = messageText;
-    if (attachedFiles.length > 0) {
-      const fileContents = attachedFiles.map((f) => `\n\n[FILE: ${f.name}]\n${f.content}`).join("");
-      fullMessage = messageText + fileContents;
-    }
+    if (attachedFiles.length > 0) fullMessage += attachedFiles.map((f) => `\n\n[FILE: ${f.name}]\n${f.content}`).join("");
 
-    const userMessage = {
-      id: Date.now(),
-      sender: "user",
-      text: messageText + (attachedFiles.length ? `\n\n(${attachedFiles.length} file dilampirkan)` : ""),
-      timestamp: timeStr
-    };
-
+    const userMessage = { id: Date.now(), sender: "user", text: messageText + (attachedFiles.length ? `\n\n(${attachedFiles.length} file)` : ""), timestamp: timeStr };
     const sessionBefore = sessions.find((s) => s.id === activeSessionId);
     const historyForApi = [...(sessionBefore?.messages || []), { ...userMessage, text: fullMessage }];
-
     const aiMessageId = Date.now() + 1;
     const placeholderAiMessage = { id: aiMessageId, sender: "ai", text: "...", timestamp: timeStr };
 
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === activeSessionId
-          ? {
-              ...session,
-              title: session.messages.length === 0 ? messageText.slice(0, 25) || "File upload" : session.title,
-              messages: [...session.messages, userMessage, placeholderAiMessage]
-            }
-          : session
-      )
-    );
-
+    setSessions((prev) => prev.map((session) => session.id === activeSessionId ? { ...session, title: session.messages.length === 0 ? messageText.slice(0, 25) || "File upload" : session.title, messages: [...session.messages, userMessage, placeholderAiMessage] } : session));
     setAttachedFiles([]);
 
-    const updateAiText = (newText) => {
-      setSessions((prev) =>
-        prev.map((session) =>
-          session.id === activeSessionId
-            ? { ...session, messages: session.messages.map((m) => (m.id === aiMessageId ? { ...m, text: newText } : m)) }
-            : session
-        )
-      );
-    };
-
-    const updateAiImage = (imageUrl, caption) => {
-      setSessions((prev) =>
-        prev.map((session) =>
-          session.id === activeSessionId
-            ? { ...session, messages: session.messages.map((m) => (m.id === aiMessageId ? { ...m, type: "image", imageUrl, text: caption } : m)) }
-            : session
-        )
-      );
-    };
+    const updateAiText = (newText) => setSessions((prev) => prev.map((session) => session.id === activeSessionId ? { ...session, messages: session.messages.map((m) => (m.id === aiMessageId ? { ...m, text: newText } : m)) } : session));
+    const updateAiImage = (imageUrl, caption) => setSessions((prev) => prev.map((session) => session.id === activeSessionId ? { ...session, messages: session.messages.map((m) => (m.id === aiMessageId ? { ...m, type: "image", imageUrl, text: caption } : m)) } : session));
 
     if (["TEBAK_BATRE", "SYSTEM_INFO", "NETWORK"].includes(currentMode)) {
       try {
@@ -1283,81 +1353,48 @@ export default function App() {
         if (autoReply) {
           const words = autoReply.split(" ");
           let acc = "";
-          for (const w of words) {
-            acc += (acc ? " " : "") + w;
-            updateAiText(acc);
-            await new Promise((r) => setTimeout(r, 25));
-          }
-          isGeneratingRef.current = false;
-          setIsTyping(false);
-          activeAbortControllerRef.current = null;
+          for (const w of words) { acc += (acc ? " " : "") + w; updateAiText(acc); await new Promise((r) => setTimeout(r, 25)); }
+          isGeneratingRef.current = false; setIsTyping(false); activeAbortControllerRef.current = null;
           return;
         }
       } catch (err) { console.error("Telemetry error:", err); }
     }
 
     if (currentMode === "IMAGE_GEN") {
-      setIsTyping(true);
-      setTypingPhrase("Membuat gambar...");
-      updateAiText("Membuat gambar...");
+      setIsTyping(true); setTypingPhrase("Membuat gambar..."); updateAiText("Membuat gambar...");
       await new Promise((r) => setTimeout(r, 800));
       const imageUrl = await generateImage(messageText);
       updateAiImage(imageUrl, messageText);
-      isGeneratingRef.current = false;
-      setIsTyping(false);
-      activeAbortControllerRef.current = null;
+      isGeneratingRef.current = false; setIsTyping(false); activeAbortControllerRef.current = null;
       return;
     }
 
-    const systemPrompt = BUILD_SYSTEM_PROMPT(profile, currentMode, curhatCategory, scriptCategory, gender, false);
-    const relevantHistory = ["CURHAT", "SCRIPT_GEN"].includes(currentMode) ? historyForApi.slice(-6) : historyForApi;
+    const systemPrompt = BUILD_SYSTEM_PROMPT(profile, currentMode, curhatCategory, scriptCategory, gender, false, contextRef.current);
+    const relevantHistory = ["CURHAT", "SCRIPT_GEN", "TEBAK_DEVICE"].includes(currentMode) ? historyForApi.slice(-6) : historyForApi;
+    const apiMessages = [{ role: "system", content: systemPrompt }, ...relevantHistory.filter((m) => m.text && m.text.trim() && m.text !== "...").map((m) => ({ role: m.sender === "user" ? "user" : "assistant", content: m.text }))];
 
-    const apiMessages = [
-      { role: "system", content: systemPrompt },
-      ...relevantHistory
-        .filter((m) => m.text && m.text.trim() && m.text !== "...")
-        .map((m) => ({ role: m.sender === "user" ? "user" : "assistant", content: m.text }))
-    ];
-
-    setIsTyping(true);
-    setTypingPhrase(getRandomTypingPhrase());
-
+    setIsTyping(true); setTypingPhrase(getRandomTypingPhrase());
     const currentSessionId = activeSessionId;
 
     await callGroqAI({
-      messages: apiMessages,
-      signal: abortController.signal,
+      messages: apiMessages, signal: abortController.signal,
       onChunk: (acc) => updateAiText(acc),
       onComplete: (finalText) => {
-        isGeneratingRef.current = false;
-        setIsTyping(false);
-        activeAbortControllerRef.current = null;
+        isGeneratingRef.current = false; setIsTyping(false); activeAbortControllerRef.current = null;
         if (!finalText) updateAiText("(Tidak ada respon.)");
-
-        // 🎯 SCHEDULE FOLLOW-UP
         if (FOLLOWUP_SETTINGS.activeModes.includes(currentMode) && currentSessionId === sessionRef.current) {
-          setTimeout(() => {
-            if (sessionRef.current === currentSessionId && !isGeneratingRef.current) {
-              scheduleFollowUp(currentSessionId, isFlirt);
-            }
-          }, 1500);
+          setTimeout(() => { if (sessionRef.current === currentSessionId && !isGeneratingRef.current) scheduleFollowUp(currentSessionId); }, 1500);
         }
       },
       onError: (err) => {
-        isGeneratingRef.current = false;
-        setIsTyping(false);
-        activeAbortControllerRef.current = null;
+        isGeneratingRef.current = false; setIsTyping(false); activeAbortControllerRef.current = null;
         updateAiText(`Error: ${err.message || "Gagal memproses pesan."}`);
       }
     });
   };
 
-  /* ============ CLEANUP ON UNMOUNT ============ */
-  useEffect(() => {
-    return () => cancelFollowUp();
-  }, [cancelFollowUp]);
+  useEffect(() => () => cancelFollowUp(), [cancelFollowUp]);
 
-  /* ============ TOGGLE DARK MODE ============ */
   const toggleDarkMode = useCallback(() => {
     setThemeTransition({ toDark: !darkMode });
     setTimeout(() => setDarkMode((d) => !d), 200);
@@ -1374,40 +1411,31 @@ export default function App() {
     });
   }, [triggerToast, cancelFollowUp]);
 
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", darkMode);
-    localStorage.setItem("aibe_dark_mode", String(darkMode));
-  }, [darkMode]);
+  const toggleLocation = useCallback(async () => {
+    if (!locationEnabled) {
+      const perm = await fetchGPSLocation();
+      triggerToast(perm ? "GPS aktif" : "Pakai IP (kurang akurat)");
+      setLocationEnabled(true);
+      localStorage.setItem(STORAGE_KEY_LOCATION_ENABLED, "true");
+    } else {
+      setLocationEnabled(false);
+      setLocation(null);
+      setActivity(ACTIVITY.IDLE);
+      localStorage.setItem(STORAGE_KEY_LOCATION_ENABLED, "false");
+      triggerToast("Lokasi dimatikan");
+    }
+  }, [locationEnabled, triggerToast]);
 
-  useEffect(() => {
-    if (!profile) return;
-    localStorage.setItem(STORAGE_KEY_PROFILE, JSON.stringify({ ...profile, lastSeen: new Date().toISOString() }));
-  }, [profile]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(sessions));
-  }, [sessions]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_PINNED, JSON.stringify(pinnedSessions));
-  }, [pinnedSessions]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeSession?.messages, isTyping]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => chatInputRef.current?.focus(), 120);
-    return () => clearTimeout(timer);
-  }, [activeSessionId, currentMode, curhatCategory, scriptCategory]);
-
+  useEffect(() => { document.documentElement.classList.toggle("dark", darkMode); localStorage.setItem("aibe_dark_mode", String(darkMode)); }, [darkMode]);
+  useEffect(() => { if (!profile) return; localStorage.setItem(STORAGE_KEY_PROFILE, JSON.stringify({ ...profile, lastSeen: new Date().toISOString() })); }, [profile]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(sessions)); }, [sessions]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_PINNED, JSON.stringify(pinnedSessions)); }, [pinnedSessions]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeSession?.messages, isTyping]);
+  useEffect(() => { const timer = setTimeout(() => chatInputRef.current?.focus(), 120); return () => clearTimeout(timer); }, [activeSessionId, currentMode, curhatCategory, scriptCategory]);
   useEffect(() => {
     const handler = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); setShowModePicker(true); }
-      if (e.key === "Escape") {
-        setShowModePicker(false); setShowCurhatPicker(false);
-        setShowScriptPicker(false); setShowSettingsModal(false); setShowSidebar(false);
-      }
+      if (e.key === "Escape") { setShowModePicker(false); setShowCurhatPicker(false); setShowScriptPicker(false); setShowSettingsModal(false); setShowSidebar(false); }
       if ((e.ctrlKey || e.metaKey) && e.key === "f") { e.preventDefault(); searchInputRef.current?.focus(); }
     };
     window.addEventListener("keydown", handler);
@@ -1415,73 +1443,46 @@ export default function App() {
   }, []);
 
   const refreshMirrorData = useCallback(async () => {
-    const [battery, system, network] = await Promise.all([
-      TelemetryProvider.getBattery(),
-      TelemetryProvider.getSystemInfo(),
-      TelemetryProvider.getNetworkInfo()
-    ]);
+    const [battery, system, network] = await Promise.all([TelemetryProvider.getBattery(), TelemetryProvider.getSystemInfo(), TelemetryProvider.getNetworkInfo()]);
     setLiveMirrorData({ battery, system, network });
   }, []);
 
-  useEffect(() => {
-    refreshMirrorData();
-    const interval = setInterval(refreshMirrorData, 30000);
-    return () => clearInterval(interval);
-  }, [refreshMirrorData]);
+  useEffect(() => { refreshMirrorData(); const interval = setInterval(refreshMirrorData, 30000); return () => clearInterval(interval); }, [refreshMirrorData]);
+
+  const isDetectiveMode = currentMode === "TEBAK_DEVICE";
 
   /* ============ ONBOARDING ============ */
   if (!profile) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4 relative overflow-hidden" style={{ backgroundColor: darkMode ? "#16121F" : "#FAF7F2" }}>
-        {themeTransition && (
-          <div className="fixed inset-0 z-[200] pointer-events-none" style={{ backgroundColor: themeTransition.toDark ? "#16121F" : "#FAF7F2", animation: "slideFromLeft 500ms cubic-bezier(0.4, 0, 0.2, 1) forwards" }} />
-        )}
+        {themeTransition && (<div className="fixed inset-0 z-[200] pointer-events-none" style={{ backgroundColor: themeTransition.toDark ? "#16121F" : "#FAF7F2", animation: "slideFromLeft 500ms cubic-bezier(0.4, 0, 0.2, 1) forwards" }} />)}
         <div className="w-full max-w-md relative z-10">
           <div className="rounded-2xl p-8" style={{ backgroundColor: t.modalBg, border: `1px solid ${t.modalBorder}`, boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
             <div className="mb-6 flex items-center gap-3">
-              <div style={{ width: 80, height: 80 }}>
-                <AnimeCharacter gender={gender} size={80} darkMode={darkMode} />
-              </div>
+              <div style={{ width: 80, height: 80 }}><AnimeCharacter gender={gender} size={80} darkMode={darkMode} /></div>
               <div>
                 <div className="text-[10px] uppercase tracking-[0.2em]" style={{ color: t.textMuted }}>Edition {APP_VERSION}</div>
                 <h1 className="text-2xl font-semibold" style={{ color: t.textPrimary, letterSpacing: "-0.02em" }}>{APP_NAME}</h1>
               </div>
             </div>
-
             <p className="text-sm mb-5" style={{ color: t.textSecondary }}>AI assistant pribadi yang ngobrolnya kayak temen.</p>
-
             <div className="mb-5">
               <label className="block text-[11px] font-medium mb-2" style={{ color: t.textSecondary }}>Karakter AI</label>
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => setGender("male")} className="rounded-xl p-3 text-center" style={{ backgroundColor: gender === "male" ? t.accentSoft : "transparent", border: `2px solid ${gender === "male" ? t.accent : t.modalBorder}` }}>
-                  <div style={{ width: 64, height: 64, margin: "0 auto" }}>
-                    <AnimeCharacter gender="male" size={64} darkMode={darkMode} />
-                  </div>
+                  <div style={{ width: 64, height: 64, margin: "0 auto" }}><AnimeCharacter gender="male" size={64} darkMode={darkMode} /></div>
                   <div className="text-[11px] mt-1 font-medium" style={{ color: t.textPrimary }}>Cowok</div>
                 </button>
                 <button onClick={() => setGender("female")} className="rounded-xl p-3 text-center" style={{ backgroundColor: gender === "female" ? t.accentSoft : "transparent", border: `2px solid ${gender === "female" ? t.accent : t.modalBorder}` }}>
-                  <div style={{ width: 64, height: 64, margin: "0 auto" }}>
-                    <AnimeCharacter gender="female" size={64} darkMode={darkMode} />
-                  </div>
+                  <div style={{ width: 64, height: 64, margin: "0 auto" }}><AnimeCharacter gender="female" size={64} darkMode={darkMode} /></div>
                   <div className="text-[11px] mt-1 font-medium" style={{ color: t.textPrimary }}>Cewek</div>
                 </button>
               </div>
             </div>
-
             <div className="space-y-4">
               <div>
                 <label className="block text-[11px] font-medium mb-2" style={{ color: t.textSecondary }}>Nama kamu</label>
-                <input
-                  type="text"
-                  value={inputName}
-                  onChange={(e) => setInputName(e.target.value)}
-                  placeholder="Tulis nama..."
-                  className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none"
-                  style={{ backgroundColor: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.textPrimary }}
-                  onFocus={(e) => { e.target.style.borderColor = t.accent; }}
-                  onBlur={(e) => { e.target.style.borderColor = t.inputBorder; }}
-                  onKeyDown={(e) => e.key === "Enter" && handleSaveProfile()}
-                />
+                <input type="text" value={inputName} onChange={(e) => setInputName(e.target.value)} placeholder="Tulis nama..." className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none" style={{ backgroundColor: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.textPrimary }} onFocus={(e) => { e.target.style.borderColor = t.accent; }} onBlur={(e) => { e.target.style.borderColor = t.inputBorder; }} onKeyDown={(e) => e.key === "Enter" && handleSaveProfile()} />
               </div>
               <button onClick={handleSaveProfile} className="w-full rounded-xl py-3 text-sm font-semibold" style={{ backgroundColor: t.accent, color: "#16121F" }}>Mulai</button>
             </div>
@@ -1495,33 +1496,19 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-full overflow-hidden relative" style={{ fontFamily: "'Inter', sans-serif", backgroundColor: t.appBg, color: t.textPrimary }}>
-      {themeTransition && (
-        <div className="fixed inset-0 z-[200] pointer-events-none" style={{ backgroundColor: themeTransition.toDark ? "#16121F" : "#FAF7F2", animation: "slideFromLeft 500ms cubic-bezier(0.4, 0, 0.2, 1) forwards" }} />
-      )}
-
-      {toastNotice && (
-        <div className="fixed bottom-8 left-1/2 z-[100] -translate-x-1/2 rounded-lg px-4 py-2.5 text-xs font-medium animate-[popIn_200ms_ease-out]" style={{ backgroundColor: t.modalBg, border: `1px solid ${t.modalBorder}`, color: t.textPrimary, boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
-          {toastNotice}
-        </div>
-      )}
+      {themeTransition && (<div className="fixed inset-0 z-[200] pointer-events-none" style={{ backgroundColor: themeTransition.toDark ? "#16121F" : "#FAF7F2", animation: "slideFromLeft 500ms cubic-bezier(0.4, 0, 0.2, 1) forwards" }} />)}
+      {toastNotice && (<div className="fixed bottom-8 left-1/2 z-[100] -translate-x-1/2 rounded-lg px-4 py-2.5 text-xs font-medium animate-[popIn_200ms_ease-out]" style={{ backgroundColor: t.modalBg, border: `1px solid ${t.modalBorder}`, color: t.textPrimary, boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>{toastNotice}</div>)}
 
       <ModePickerModal open={showModePicker} onClose={() => setShowModePicker(false)} currentMode={currentMode} onSelect={handleModeSelect} darkMode={darkMode} />
-      <SubcategoryModal open={showCurhatPicker} onClose={() => setShowCurhatPicker(false)} onSelect={handleCurhatCategorySelect} selectedCategory={curhatCategory} title="Mau curhat apa?" subtitle="Pilih kategori — chat baru bakal dimulai" categories={CURHAT_CATEGORIES} darkMode={darkMode} />
-      <SubcategoryModal open={showScriptPicker} onClose={() => setShowScriptPicker(false)} onSelect={handleScriptCategorySelect} selectedCategory={scriptCategory} title="Mau bikin script apa?" subtitle="Pilih kategori script" categories={SCRIPT_CATEGORIES} darkMode={darkMode} />
+      <SubcategoryModal open={showCurhatPicker} onClose={() => setShowCurhatPicker(false)} onSelect={handleCurhatCategorySelect} selectedCategory={curhatCategory} title="Mau curhat apa?" subtitle="Pilih kategori" categories={CURHAT_CATEGORIES} darkMode={darkMode} />
+      <SubcategoryModal open={showScriptPicker} onClose={() => setShowScriptPicker(false)} onSelect={handleScriptCategorySelect} selectedCategory={scriptCategory} title="Mau bikin script apa?" subtitle="Pilih kategori" categories={SCRIPT_CATEGORIES} darkMode={darkMode} />
 
-      {showSidebar && (
-        <div className="fixed inset-0 z-[70] md:hidden" style={{ backgroundColor: "rgba(0,0,0,0.5)" }} onClick={() => setShowSidebar(false)} />
-      )}
+      {showSidebar && (<div className="fixed inset-0 z-[70] md:hidden" style={{ backgroundColor: "rgba(0,0,0,0.5)" }} onClick={() => setShowSidebar(false)} />)}
 
-      <aside
-        className={`fixed md:relative top-0 left-0 h-full w-64 flex flex-col z-[75] transition-transform duration-300 ${showSidebar ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
-        style={{ backgroundColor: t.sidebarBg, borderRight: `1px solid ${t.sidebarBorder}` }}
-      >
+      <aside className={`fixed md:relative top-0 left-0 h-full w-64 flex flex-col z-[75] transition-transform duration-300 ${showSidebar ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`} style={{ backgroundColor: t.sidebarBg, borderRight: `1px solid ${t.sidebarBorder}` }}>
         <div className="p-4 flex items-center justify-between border-b" style={{ borderColor: t.sidebarBorder }}>
           <div className="flex items-center gap-3">
-            <div ref={headerCharRef} style={{ width: 48, height: 48 }}>
-              <AnimeCharacter gender={gender} size={48} darkMode={darkMode} trackingElement={headerCharRef} />
-            </div>
+            <div ref={headerCharRef} style={{ width: 48, height: 48 }}><AnimeCharacter gender={gender} size={48} darkMode={darkMode} trackingElement={headerCharRef} activity={activity} detective={isDetectiveMode} /></div>
             <div>
               <div className="text-sm font-semibold leading-none" style={{ color: t.textPrimary, letterSpacing: "-0.01em" }}>{APP_NAME}</div>
               <div className="text-[10px] mt-1" style={{ fontFamily: "'JetBrains Mono', monospace", color: t.textMuted }}>{APP_VERSION}</div>
@@ -1531,13 +1518,7 @@ export default function App() {
         </div>
 
         <div className="p-3">
-          <button
-            onClick={handleCreateNewSession}
-            className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-all"
-            style={{ backgroundColor: t.inputBg, border: `1px solid ${t.sidebarBorder}`, color: t.textPrimary }}
-            onMouseEnter={(e) => e.currentTarget.style.borderColor = t.warm}
-            onMouseLeave={(e) => e.currentTarget.style.borderColor = t.sidebarBorder}
-          >
+          <button onClick={handleCreateNewSession} className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-all" style={{ backgroundColor: t.inputBg, border: `1px solid ${t.sidebarBorder}`, color: t.textPrimary }} onMouseEnter={(e) => e.currentTarget.style.borderColor = t.warm} onMouseLeave={(e) => e.currentTarget.style.borderColor = t.sidebarBorder}>
             <Plus size={13} /> Obrolan Baru
           </button>
         </div>
@@ -1545,15 +1526,7 @@ export default function App() {
         <div className="px-3 pb-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2" size={12} style={{ color: t.textMuted }} />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              placeholder="Cari..."
-              className="w-full rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none"
-              style={{ backgroundColor: t.inputBg, border: `1px solid ${t.sidebarBorder}`, color: t.textPrimary }}
-            />
+            <input ref={searchInputRef} type="text" value={searchFilter} onChange={(e) => setSearchFilter(e.target.value)} placeholder="Cari..." className="w-full rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none" style={{ backgroundColor: t.inputBg, border: `1px solid ${t.sidebarBorder}`, color: t.textPrimary }} />
           </div>
         </div>
 
@@ -1562,16 +1535,7 @@ export default function App() {
             const isPinned = pinnedSessions.includes(session.id);
             const isActive = activeSessionId === session.id;
             return (
-              <div
-                key={session.id}
-                onClick={() => handleSwitchSession(session.id)}
-                className="group flex items-center justify-between rounded-lg px-2.5 py-2 text-xs transition-all cursor-pointer"
-                style={{
-                  backgroundColor: isActive ? t.warmSoft : "transparent",
-                  border: `1px solid ${isActive ? t.warm + "60" : "transparent"}`,
-                  color: isActive ? t.textPrimary : t.textSecondary
-                }}
-              >
+              <div key={session.id} onClick={() => handleSwitchSession(session.id)} className="group flex items-center justify-between rounded-lg px-2.5 py-2 text-xs transition-all cursor-pointer" style={{ backgroundColor: isActive ? t.warmSoft : "transparent", border: `1px solid ${isActive ? t.warm + "60" : "transparent"}`, color: isActive ? t.textPrimary : t.textSecondary }}>
                 <div className="flex items-center gap-2 truncate">
                   {isPinned ? <Pin size={11} style={{ color: t.warm }} /> : <MessageSquare size={12} style={{ color: t.textMuted }} />}
                   <span className="truncate">{session.title}</span>
@@ -1585,19 +1549,34 @@ export default function App() {
           })}
         </div>
 
-        {liveMirrorData?.battery?.available && (
-          <div className="p-3 border-t" style={{ borderColor: t.sidebarBorder }}>
-            <div className="rounded-lg p-3" style={{ backgroundColor: t.inputBg, border: `1px solid ${t.sidebarBorder}` }}>
-              <div className="flex items-center gap-1.5 text-[10px] font-medium" style={{ color: t.textSecondary }}>
-                <span style={{ fontSize: 14 }}>{batteryStatus.emoji}</span>
-                <span>{batteryStatus.label}</span>
-              </div>
-              <div className="mt-2 h-1 w-full rounded-full overflow-hidden" style={{ backgroundColor: t.sidebarBorder }}>
+        <div className="p-3 border-t space-y-2" style={{ borderColor: t.sidebarBorder }}>
+          {liveMirrorData?.battery?.available && (
+            <div className="rounded-lg p-2.5" style={{ backgroundColor: t.inputBg, border: `1px solid ${t.sidebarBorder}` }}>
+              <div className="flex items-center gap-1.5 text-[10px] font-medium" style={{ color: t.textSecondary }}><span style={{ fontSize: 12 }}>{batteryStatus.emoji}</span><span>{batteryStatus.label}</span></div>
+              <div className="mt-1.5 h-1 w-full rounded-full overflow-hidden" style={{ backgroundColor: t.sidebarBorder }}>
                 <div className="h-full transition-all duration-500 rounded-full" style={{ width: `${liveMirrorData.battery.data.level}%`, backgroundColor: batteryStatus.color }} />
               </div>
             </div>
-          </div>
-        )}
+          )}
+          {device && (
+            <div className="rounded-lg p-2.5 flex items-center gap-2" style={{ backgroundColor: t.inputBg, border: `1px solid ${t.sidebarBorder}` }}>
+              <Smartphone size={11} style={{ color: t.accent }} />
+              <div className="text-[10px] font-medium truncate" style={{ color: t.textSecondary }}>{getDeviceLabel(device)}</div>
+            </div>
+          )}
+          {locationEnabled && location && (
+            <div className="rounded-lg p-2.5 flex items-center gap-2" style={{ backgroundColor: t.inputBg, border: `1px solid ${t.sidebarBorder}` }}>
+              <MapPin size={11} style={{ color: t.warm }} />
+              <div className="text-[10px] font-medium truncate" style={{ color: t.textSecondary }}>{[location.suburb, location.city, location.region].filter(Boolean).join(", ") || "Lokasi aktif"}</div>
+            </div>
+          )}
+          {locationEnabled && activity !== ACTIVITY.IDLE && (
+            <div className="rounded-lg p-2.5 flex items-center gap-2" style={{ backgroundColor: t.inputBg, border: `1px solid ${t.sidebarBorder}` }}>
+              <span style={{ fontSize: 11 }}>{getActivityEmoji(activity)}</span>
+              <div className="text-[10px] font-medium" style={{ color: t.textSecondary }}>{getActivityLabel(activity)}</div>
+            </div>
+          )}
+        </div>
       </aside>
 
       <main className="flex flex-1 flex-col h-full relative min-w-0">
@@ -1605,17 +1584,15 @@ export default function App() {
           <div className="flex items-center gap-1">
             <button onClick={() => setShowSidebar(true)} className="md:hidden rounded-lg p-2" style={{ color: t.textSecondary }}><Menu size={16} /></button>
             {[{ id: "chat", label: "Obrolan" }, { id: "telemetry", label: "Telemetry" }].map((view) => (
-              <button key={view.id} onClick={() => setActiveView(view.id)} className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-all" style={{ backgroundColor: activeView === view.id ? t.accentSoft : "transparent", border: `1px solid ${activeView === view.id ? t.accent + "60" : "transparent"}`, color: activeView === view.id ? t.textPrimary : t.textSecondary }}>
-                {view.label}
-              </button>
+              <button key={view.id} onClick={() => setActiveView(view.id)} className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-all" style={{ backgroundColor: activeView === view.id ? t.accentSoft : "transparent", border: `1px solid ${activeView === view.id ? t.accent + "60" : "transparent"}`, color: activeView === view.id ? t.textPrimary : t.textSecondary }}>{view.label}</button>
             ))}
           </div>
 
           <div className="flex items-center gap-1.5">
-            <div className="hidden lg:flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px]" style={{ border: `1px solid ${t.headerBorder}`, color: t.textSecondary }}>
-              <span>{batteryStatus.emoji}</span>
-              <span>{batteryStatus.label}</span>
-            </div>
+            <button onClick={toggleLocation} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all" style={{ backgroundColor: locationEnabled ? t.warmSoft : "transparent", border: `1px solid ${locationEnabled ? t.warm + "60" : t.headerBorder}`, color: locationEnabled ? t.warm : t.textSecondary }} title={locationEnabled ? "Lokasi aktif" : "Aktifkan lokasi"}>
+              <MapPin size={11} />
+              <span className="hidden sm:inline">{locationEnabled ? "Lokasi ON" : "Lokasi OFF"}</span>
+            </button>
             <button onClick={handleExportChat} title="Export" className="hidden sm:flex rounded-lg p-2" style={{ color: t.textSecondary }} onMouseEnter={(e) => e.currentTarget.style.color = t.accent} onMouseLeave={(e) => e.currentTarget.style.color = t.textSecondary}><Download size={14} /></button>
             <button onClick={toggleGender} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all" style={{ backgroundColor: t.accentSoft, border: `1px solid ${t.accent}40`, color: t.accent }} title={gender === "male" ? "Ganti ke cewek" : "Ganti ke cowok"}>
               <span style={{ fontSize: 12 }}>{gender === "male" ? "♂" : "♀"}</span>
@@ -1633,23 +1610,21 @@ export default function App() {
 
         {currentMode === "CURHAT" && curhatCategory && (
           <div className="px-6 py-2 flex items-center justify-between z-20" style={{ borderBottom: `1px solid ${t.headerBorder}`, backgroundColor: t.modalBg }}>
-            <div className="flex items-center gap-2 text-[11px]">
-              <span style={{ color: t.textMuted }}>Curhat</span>
-              <span style={{ color: t.textMuted }}>·</span>
-              <span style={{ color: currentCategoryData.accent, fontWeight: 500 }}>{currentCategoryData.label}</span>
-            </div>
+            <div className="flex items-center gap-2 text-[11px]"><span style={{ color: t.textMuted }}>Curhat</span><span style={{ color: t.textMuted }}>·</span><span style={{ color: currentCategoryData.accent, fontWeight: 500 }}>{currentCategoryData.label}</span></div>
             <button onClick={() => setShowCurhatPicker(true)} className="text-[10px]" style={{ color: t.textMuted }}>Ganti</button>
           </div>
         )}
 
         {currentMode === "SCRIPT_GEN" && scriptCategory && (
           <div className="px-6 py-2 flex items-center justify-between z-20" style={{ borderBottom: `1px solid ${t.headerBorder}`, backgroundColor: t.modalBg }}>
-            <div className="flex items-center gap-2 text-[11px]">
-              <span style={{ color: t.textMuted }}>Script</span>
-              <span style={{ color: t.textMuted }}>·</span>
-              <span style={{ color: currentScriptData.accent, fontWeight: 500 }}>{currentScriptData.label}</span>
-            </div>
+            <div className="flex items-center gap-2 text-[11px]"><span style={{ color: t.textMuted }}>Script</span><span style={{ color: t.textMuted }}>·</span><span style={{ color: currentScriptData.accent, fontWeight: 500 }}>{currentScriptData.label}</span></div>
             <button onClick={() => setShowScriptPicker(true)} className="text-[10px]" style={{ color: t.textMuted }}>Ganti</button>
+          </div>
+        )}
+
+        {currentMode === "TEBAK_DEVICE" && (
+          <div className="px-6 py-2 flex items-center justify-between z-20" style={{ borderBottom: `1px solid ${t.headerBorder}`, backgroundColor: t.accentSoft }}>
+            <div className="flex items-center gap-2 text-[11px]"><Smartphone size={12} style={{ color: t.accent }} /><span style={{ color: t.accent, fontWeight: 500 }}>Mode Tebak Device — coba tanya "device gw apa?" atau "kok tau?"</span></div>
           </div>
         )}
 
@@ -1657,9 +1632,7 @@ export default function App() {
           <div className="flex flex-1 flex-col overflow-hidden relative">
             <div className="flex-1 overflow-y-auto px-4 md:px-10 py-8 relative">
               <div className="max-w-3xl mx-auto w-full space-y-5">
-                {activeSession.messages.map((msg) => (
-                  <MessageBubble key={msg.id} message={msg} onCopy={copyToClipboard} darkMode={darkMode} />
-                ))}
+                {activeSession.messages.map((msg) => <MessageBubble key={msg.id} message={msg} onCopy={copyToClipboard} darkMode={darkMode} />)}
                 {isTyping && <TypingIndicator phrase={typingPhrase || "Sabar lagi ngetik..."} darkMode={darkMode} />}
                 <div ref={messagesEndRef} />
               </div>
@@ -1667,11 +1640,11 @@ export default function App() {
               {activeSession.messages.length === 0 && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="text-center">
-                    <div ref={emptyCharRef} style={{ width: 160, height: 160, margin: "0 auto", animation: "float 4s ease-in-out infinite" }}>
-                      <AnimeCharacter gender={gender} size={160} darkMode={darkMode} trackingElement={emptyCharRef} />
+                    <div ref={emptyCharRef} style={{ width: 160, height: 160, margin: "0 auto" }}>
+                      <AnimeCharacter gender={gender} size={160} darkMode={darkMode} trackingElement={emptyCharRef} activity={activity} detective={isDetectiveMode} />
                     </div>
                     <div className="text-sm font-medium mt-4 mb-1" style={{ color: t.textSecondary }}>
-                      {gender === "female" ? `Hai, aku siap dengerin kamu ✨` : `Halo, gue siap bantu lu 🔥`}
+                      {isDetectiveMode ? (gender === "female" ? `Aku siap nebak device kamu 🔍` : `Gue siap nebak device lu 🔍`) : (gender === "female" ? `Hai, aku siap dengerin kamu ✨` : `Halo, gue siap bantu lu 🔥`)}
                     </div>
                     <div className="text-[11px]" style={{ color: t.textMuted }}>Ketik pesan di bawah untuk mulai</div>
                   </div>
@@ -1683,8 +1656,7 @@ export default function App() {
               <div className="px-6 py-2 flex flex-wrap gap-2 z-20" style={{ borderTop: `1px solid ${t.headerBorder}` }}>
                 {attachedFiles.map((f, i) => (
                   <div key={i} className="flex items-center gap-2 rounded-md px-2.5 py-1 text-[10px]" style={{ backgroundColor: t.modalBg, border: `1px solid ${t.headerBorder}`, color: t.textSecondary }}>
-                    <FileText size={10} />
-                    <span>{f.name}</span>
+                    <FileText size={10} /><span>{f.name}</span>
                     <button onClick={() => removeAttachedFile(i)} style={{ color: t.textMuted }}><X size={10} /></button>
                   </div>
                 ))}
@@ -1703,7 +1675,8 @@ export default function App() {
                     onChange={(e) => setInputQuery(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
                     placeholder={
-                      currentMode === "TEBAK_BATRE" ? 'Coba: "tebak batre gw berapa"'
+                      currentMode === "TEBAK_DEVICE" ? 'Coba: "device gw apa?" atau "kok tau?"'
+                      : currentMode === "TEBAK_BATRE" ? 'Coba: "tebak batre gw berapa"'
                       : currentMode === "SYSTEM_INFO" ? 'Coba: "spek device gw"'
                       : currentMode === "NETWORK" ? 'Coba: "koneksi gw gimana"'
                       : currentMode === "CURHAT" ? curhatCategory ? (gender === "female" ? "Cerita aja ke aku..." : "Cerita aja...") : "Pilih kategori curhat dulu..."
@@ -1738,18 +1711,15 @@ export default function App() {
               {liveMirrorData ? (
                 <div className="grid gap-3 md:grid-cols-2">
                   {[
-                    { title: "Baterai", icon: Battery, content: liveMirrorData.battery?.available ? (<><div>Level: <b>{liveMirrorData.battery.data.level}%</b></div><div>Status: <b>{liveMirrorData.battery.data.charging ? "Mengisi" : "Baterai"}</b></div></>) : (<div style={{ color: t.textMuted }}>{liveMirrorData.battery?.reason || "Tidak tersedia"}</div>) },
-                    { title: "Perangkat", icon: Cpu, content: (<><div>Cores: <b>{liveMirrorData.system?.data?.logicalCores}</b></div><div>RAM: <b>{liveMirrorData.system?.data?.deviceMemoryGB}</b></div><div>Layar: <b>{liveMirrorData.system?.data?.screenWidth}×{liveMirrorData.system?.data?.screenHeight}</b></div></>) },
-                    { title: "Jaringan", icon: Wifi, content: (<><div>Online: <b>{liveMirrorData.network?.data?.online ? "Ya" : "Tidak"}</b></div><div>Tipe: <b>{liveMirrorData.network?.data?.effectiveType}</b></div><div>Downlink: <b>{liveMirrorData.network?.data?.downlinkMbps}</b></div></>) },
-                    { title: "Statistik", icon: Sparkles, content: (<><div>Total Sesi: <b>{totalStats.totalSessions}</b></div><div>Total Pesan: <b>{totalStats.totalMessages}</b></div></>) }
+                    { title: "Device", icon: Smartphone, content: device ? (<><div>Merek: <b>{device.brand || "?"}</b></div><div>Tipe: <b>{getDeviceLabel(device)}</b></div><div>OS: <b>{device.os}</b></div><div>Browser: <b>{device.browser}</b></div><div>Layar: <b>{device.screenW}×{device.screenH}</b></div></>) : (<div style={{ color: t.textMuted }}>Memuat...</div>) },
+                    { title: "Lokasi", icon: MapPin, content: locationEnabled && location ? (<><div>Kota: <b>{location.city || "?"}</b></div><div>Region: <b>{location.region || "?"}</b></div><div>Source: <b>{location.source.toUpperCase()}</b></div>{location.accuracy && <div>Akurasi: <b>{location.accuracy}m</b></div>}</>) : (<div style={{ color: t.textMuted }}>{locationEnabled ? "Mendeteksi..." : "Nonaktif (klik Lokasi OFF di header)"}</div>) },
+                    { title: "Aktivitas", icon: Sparkles, content: (<><div>Status: <b>{getActivityEmoji(activity)} {getActivityLabel(activity)}</b></div><div>Tab: <b>{isTabActive ? "Aktif" : "Background"}</b></div></>) },
+                    { title: "Baterai & Jaringan", icon: Battery, content: liveMirrorData.battery?.available ? (<><div>Baterai: <b>{liveMirrorData.battery.data.level}%</b> {liveMirrorData.battery.data.charging ? "⚡" : ""}</div><div>Online: <b>{liveMirrorData.network?.data?.online ? "Ya" : "Tidak"}</b></div><div>Tipe: <b>{liveMirrorData.network?.data?.effectiveType}</b></div></>) : (<div style={{ color: t.textMuted }}>Tidak tersedia</div>) }
                   ].map((card, i) => {
                     const Icon = card.icon;
                     return (
                       <div key={i} className="rounded-xl p-4" style={{ backgroundColor: t.modalBg, border: `1px solid ${t.headerBorder}` }}>
-                        <div className="flex items-center gap-2 mb-2.5">
-                          <Icon size={12} style={{ color: t.accent }} />
-                          <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: t.textSecondary }}>{card.title}</span>
-                        </div>
+                        <div className="flex items-center gap-2 mb-2.5"><Icon size={12} style={{ color: t.accent }} /><span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: t.textSecondary }}>{card.title}</span></div>
                         <div className="text-[12px] space-y-1 leading-relaxed">{card.content}</div>
                       </div>
                     );
@@ -1770,42 +1740,27 @@ export default function App() {
               <h3 className="text-base font-semibold" style={{ color: t.textPrimary }}>Pengaturan</h3>
               <button onClick={() => setShowSettingsModal(false)} className="rounded-lg p-1.5" style={{ color: t.textSecondary }}><X size={14} /></button>
             </div>
-
             <div className="flex items-center justify-between rounded-xl p-3" style={{ border: `1px solid ${t.modalBorder}` }}>
-              <div>
-                <div className="text-[11px] font-medium" style={{ color: t.textPrimary }}>Karakter AI</div>
-                <div className="text-[10px] mt-0.5" style={{ color: t.textMuted }}>Ganti persona cowok/cewek</div>
-              </div>
-              <button onClick={toggleGender} className="rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all" style={{ backgroundColor: t.accentSoft, border: `1px solid ${t.accent}60`, color: t.accent }}>
-                {gender === "male" ? "♂ Cowok" : "♀ Cewek"}
-              </button>
+              <div><div className="text-[11px] font-medium" style={{ color: t.textPrimary }}>Karakter AI</div><div className="text-[10px] mt-0.5" style={{ color: t.textMuted }}>Ganti persona cowok/cewek</div></div>
+              <button onClick={toggleGender} className="rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all" style={{ backgroundColor: t.accentSoft, border: `1px solid ${t.accent}60`, color: t.accent }}>{gender === "male" ? "♂ Cowok" : "♀ Cewek"}</button>
             </div>
-
+            <div className="flex items-center justify-between rounded-xl p-3" style={{ border: `1px solid ${t.modalBorder}` }}>
+              <div><div className="text-[11px] font-medium" style={{ color: t.textPrimary }}>Deteksi Lokasi</div><div className="text-[10px] mt-0.5" style={{ color: t.textMuted }}>AI tau kamu di mana & lagi ngapain</div></div>
+              <button onClick={toggleLocation} className="rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all" style={{ backgroundColor: locationEnabled ? t.warmSoft : "transparent", border: `1px solid ${locationEnabled ? t.warm : t.modalBorder}`, color: locationEnabled ? t.warm : t.textSecondary }}>{locationEnabled ? "ON" : "OFF"}</button>
+            </div>
             <div className="rounded-xl p-3" style={{ border: `1px solid ${t.modalBorder}`, backgroundColor: t.accentSoft }}>
-              <div className="text-[11px] font-medium" style={{ color: t.textPrimary }}>Auto Follow-up Aktif</div>
-              <div className="text-[10px] mt-1 leading-relaxed" style={{ color: t.textSecondary }}>
-                Kalau kamu gombalin AI dan diem, dia bakal balas sendiri sampai 3x. Kalau kamu balas duluan, otomatis stop.
-              </div>
+              <div className="text-[11px] font-medium" style={{ color: t.textPrimary }}>Mode Tebak Device</div>
+              <div className="text-[10px] mt-1 leading-relaxed" style={{ color: t.textSecondary }}>Masuk mode ini buat nanya "device gw apa?". AI bakal tebak dari User-Agent browser.</div>
             </div>
-
             <div className="space-y-3.5 text-[12px]">
-              <div>
-                <label className="block mb-1.5 font-medium" style={{ color: t.textSecondary }}>Nama</label>
-                <input type="text" value={profile.name} onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-lg px-3 py-2 focus:outline-none" style={{ backgroundColor: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.textPrimary }} />
-              </div>
-              <div>
-                <label className="block mb-1.5 font-medium" style={{ color: t.textSecondary }}>Kota</label>
-                <input type="text" value={profile.preferences?.city || ""} onChange={(e) => setProfile((p) => ({ ...p, preferences: { ...p.preferences, city: e.target.value } }))} className="w-full rounded-lg px-3 py-2 focus:outline-none" style={{ backgroundColor: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.textPrimary }} />
-              </div>
+              <div><label className="block mb-1.5 font-medium" style={{ color: t.textSecondary }}>Nama</label><input type="text" value={profile.name} onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-lg px-3 py-2 focus:outline-none" style={{ backgroundColor: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.textPrimary }} /></div>
+              <div><label className="block mb-1.5 font-medium" style={{ color: t.textSecondary }}>Kota</label><input type="text" value={profile.preferences?.city || ""} onChange={(e) => setProfile((p) => ({ ...p, preferences: { ...p.preferences, city: e.target.value } }))} className="w-full rounded-lg px-3 py-2 focus:outline-none" style={{ backgroundColor: t.inputBg, border: `1px solid ${t.inputBorder}`, color: t.textPrimary }} /></div>
               <div className="flex items-center justify-between rounded-lg p-3" style={{ border: `1px solid ${t.modalBorder}` }}>
                 <span className="font-medium" style={{ color: t.textSecondary }}>Dark Mode</span>
                 <button onClick={toggleDarkMode} className="rounded-md px-3 py-1 text-[11px] font-medium" style={{ backgroundColor: darkMode ? t.accent : "transparent", color: darkMode ? "#16121F" : t.textSecondary, border: `1px solid ${darkMode ? t.accent : t.modalBorder}` }}>{darkMode ? "ON" : "OFF"}</button>
               </div>
               <div className="rounded-lg p-3 text-[11px] leading-loose" style={{ border: `1px solid ${t.modalBorder}`, color: t.textSecondary }}>
-                <b style={{ color: t.textPrimary }}>Shortcut</b><br />
-                Ctrl+K — Mode<br />
-                Ctrl+F — Cari<br />
-                Esc — Tutup
+                <b style={{ color: t.textPrimary }}>Shortcut</b><br />Ctrl+K — Mode<br />Ctrl+F — Cari<br />Esc — Tutup
               </div>
             </div>
             <button onClick={() => { setShowSettingsModal(false); triggerToast("Disimpan"); }} className="w-full rounded-lg py-2.5 text-[12px] font-medium" style={{ backgroundColor: t.accent, color: "#16121F" }}>Simpan</button>

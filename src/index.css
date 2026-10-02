@@ -25,6 +25,21 @@
   40% { transform: scale(1); opacity: 1; }
 }
 
+@keyframes walkBob {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-3px) rotate(2deg); }
+}
+
+@keyframes runBob {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-5px) rotate(4deg); }
+}
+
+@keyframes sleepBob {
+  0%, 100% { transform: translateY(0) rotate(-6deg); }
+  50% { transform: translateY(-1px) rotate(-6deg); }
+}
+
 * {
   transition-property: background-color, border-color, color;
   transition-duration: 200ms;
@@ -35,3 +50,13 @@
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #3A2E20; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #A78BFA; }
+
+@keyframes detectivePose {
+  0%, 100% { transform: rotate(-3deg) scale(1); }
+  50% { transform: rotate(-3deg) scale(1.03); }
+}
+
+@keyframes magnifyShine {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}

@@ -46,7 +46,7 @@ const STORAGE_KEY_PROFILE = "iq_nya_loh_profile";
 const STORAGE_KEY_SESSIONS = "iq_nya_loh_sessions";
 const STORAGE_KEY_PINNED = "iq_nya_loh_pinned";
 
-const GROQ_API_KEY = "";
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const GROQ_MODEL = "openai/gpt-oss-120b";
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 const IMAGE_API = "https://image.pollinations.ai/prompt";

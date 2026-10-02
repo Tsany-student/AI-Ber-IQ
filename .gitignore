@@ -22,4 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-catatan.txt 
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+catatan.txt
